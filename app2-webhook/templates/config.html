@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuração dos Servidores</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .config-container {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .status.online {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .status.offline {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .refresh-button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        .refresh-button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>Configuração dos Servidores de Visualização</h1>
+    
+    <button class="refresh-button" onclick="checkAllServers()">Atualizar Status</button>
+
+    <div class="config-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Servidor</th>
+                    <th>URL</th>
+                    <th>Delay de Exibição</th>
+                    <th>Status</th>
+                    <th>Fila Atual</th>
+                </tr>
+            </thead>
+            <tbody id="serverTable">
+                {% for server in servers %}
+                <tr>
+                    <td>{{ server.name }}</td>
+                    <td>{{ server.url }}</td>
+                    <td>{{ server.delay }}ms</td>
+                    <td><span class="status" id="status-{{ loop.index }}">Verificando...</span></td>
+                    <td id="queue-{{ loop.index }}">-</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let checkingStatus = false;
+
+        async function checkServerStatus(url, index) {
+            try {
+                const response = await fetch(`${url}/queue-status`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const statusElement = document.getElementById(`status-${index}`);
+                    const queueElement = document.getElementById(`queue-${index}`);
+                    
+                    statusElement.textContent = 'Online';
+                    statusElement.className = 'status online';
+                    queueElement.textContent = `${data.queue_size} imagem(ns) na fila`;
+                } else {
+                    throw new Error('Servidor não respondeu');
+                }
+            } catch (error) {
+                console.error(`Erro ao verificar servidor ${index}:`, error);
+                const statusElement = document.getElementById(`status-${index}`);
+                const queueElement = document.getElementById(`queue-${index}`);
+                
+                statusElement.textContent = 'Offline';
+                statusElement.className = 'status offline';
+                queueElement.textContent = '-';
+            }
+        }
+
+        async function checkAllServers() {
+            if (checkingStatus) return;
+            checkingStatus = true;
+            
+            const servers = {{ servers|tojson|safe }};
+            const checks = servers.map((server, index) => 
+                checkServerStatus(server.url, index + 1)
+            );
+            
+            await Promise.all(checks);
+            checkingStatus = false;
+        }
+
+        // Verificar status inicial
+        checkAllServers();
+
+        // Atualizar a cada 30 segundos
+        setInterval(checkAllServers, 30000);
+    </script>
+</body>
+</html> 

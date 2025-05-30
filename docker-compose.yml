@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  app1-cadastro:
+    build: ./app1-cadastro
+    ports:
+      - "8081:5001"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=development
+    networks:
+      - app-network
+
+  app2-webhook:
+    build: ./app2-webhook
+    ports:
+      - "8082:5002"
+    environment:
+      - FLASK_ENV=development
+    networks:
+      - app-network
+
+  app3-view1:
+    build: ./app3-visualizacao
+    ports:
+      - "8083:5003"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=development
+      - DISPLAY_DELAY=30000
+    networks:
+      - app-network
+
+  app3-view2:
+    build: ./app3-visualizacao
+    ports:
+      - "8084:5003"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=development
+      - DISPLAY_DELAY=45000
+    networks:
+      - app-network
+
+  app3-view3:
+    build: ./app3-visualizacao
+    ports:
+      - "8085:5003"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=development
+      - DISPLAY_DELAY=60000
+    networks:
+      - app-network
+
+  app3-view4:
+    build: ./app3-visualizacao
+    ports:
+      - "8086:5003"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=development
+      - DISPLAY_DELAY=75000
+    networks:
+      - app-network
+
+  app3-view5:
+    build: ./app3-visualizacao
+    ports:
+      - "8087:5003"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=development
+      - DISPLAY_DELAY=90000
+    networks:
+      - app-network
+
+  app3-view6:
+    build: ./app3-visualizacao
+    ports:
+      - "8088:5003"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=development
+      - DISPLAY_DELAY=105000
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  data: 
