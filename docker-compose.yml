@@ -1,95 +1,138 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: gestao_img
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - app-network
+
   app1-cadastro:
     build: ./app1-cadastro
     ports:
-      - "8081:5001"
+      - "5001:5001"
     volumes:
-      - ./data:/app/data
+      - ./app1-cadastro:/app
     environment:
-      - FLASK_ENV=development
+      - POSTGRES_DB=gestao_img
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=postgres
+    depends_on:
+      - postgres
     networks:
       - app-network
 
   app2-webhook:
     build: ./app2-webhook
     ports:
-      - "8082:5002"
+      - "5002:5002"
+    volumes:
+      - ./app2-webhook:/app
     environment:
-      - FLASK_ENV=development
+      - POSTGRES_DB=gestao_img
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=postgres
+    depends_on:
+      - postgres
     networks:
       - app-network
 
-  app3-view1:
+  visualization1:
     build: ./app3-visualizacao
     ports:
       - "8083:5003"
-    volumes:
-      - ./data:/app/data
     environment:
-      - FLASK_ENV=development
-      - DISPLAY_DELAY=30000
+      - DELAY=30
+      - POSTGRES_DB=gestao_img
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=postgres
+    depends_on:
+      - postgres
     networks:
       - app-network
 
-  app3-view2:
+  visualization2:
     build: ./app3-visualizacao
     ports:
       - "8084:5003"
-    volumes:
-      - ./data:/app/data
     environment:
-      - FLASK_ENV=development
-      - DISPLAY_DELAY=45000
+      - DELAY=45
+      - POSTGRES_DB=gestao_img
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=postgres
+    depends_on:
+      - postgres
     networks:
       - app-network
 
-  app3-view3:
+  visualization3:
     build: ./app3-visualizacao
     ports:
       - "8085:5003"
-    volumes:
-      - ./data:/app/data
     environment:
-      - FLASK_ENV=development
-      - DISPLAY_DELAY=60000
+      - DELAY=60
+      - POSTGRES_DB=gestao_img
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=postgres
+    depends_on:
+      - postgres
     networks:
       - app-network
 
-  app3-view4:
+  visualization4:
     build: ./app3-visualizacao
     ports:
       - "8086:5003"
-    volumes:
-      - ./data:/app/data
     environment:
-      - FLASK_ENV=development
-      - DISPLAY_DELAY=75000
+      - DELAY=75
+      - POSTGRES_DB=gestao_img
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=postgres
+    depends_on:
+      - postgres
     networks:
       - app-network
 
-  app3-view5:
+  visualization5:
     build: ./app3-visualizacao
     ports:
       - "8087:5003"
-    volumes:
-      - ./data:/app/data
     environment:
-      - FLASK_ENV=development
-      - DISPLAY_DELAY=90000
+      - DELAY=90
+      - POSTGRES_DB=gestao_img
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=postgres
+    depends_on:
+      - postgres
     networks:
       - app-network
 
-  app3-view6:
+  visualization6:
     build: ./app3-visualizacao
     ports:
       - "8088:5003"
-    volumes:
-      - ./data:/app/data
     environment:
-      - FLASK_ENV=development
-      - DISPLAY_DELAY=105000
+      - DELAY=105
+      - POSTGRES_DB=gestao_img
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=postgres
+    depends_on:
+      - postgres
     networks:
       - app-network
 
@@ -98,4 +141,4 @@ networks:
     driver: bridge
 
 volumes:
-  data: 
+  postgres_data: 

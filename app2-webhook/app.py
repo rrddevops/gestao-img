@@ -11,37 +11,37 @@ app = Flask(__name__)
 VISUALIZATION_SERVERS = [
     {
         "name": "Servidor 1",
-        "url": "http://app3-view1:5003",
+        "url": "http://visualization1:5003",
         "external_port": "8083",
         "delay": 30000
     },
     {
         "name": "Servidor 2",
-        "url": "http://app3-view2:5003",
+        "url": "http://visualization2:5003",
         "external_port": "8084",
         "delay": 45000
     },
     {
         "name": "Servidor 3",
-        "url": "http://app3-view3:5003",
+        "url": "http://visualization3:5003",
         "external_port": "8085",
         "delay": 60000
     },
     {
         "name": "Servidor 4",
-        "url": "http://app3-view4:5003",
+        "url": "http://visualization4:5003",
         "external_port": "8086",
         "delay": 75000
     },
     {
         "name": "Servidor 5",
-        "url": "http://app3-view5:5003",
+        "url": "http://visualization5:5003",
         "external_port": "8087",
         "delay": 90000
     },
     {
         "name": "Servidor 6",
-        "url": "http://app3-view6:5003",
+        "url": "http://visualization6:5003",
         "external_port": "8088",
         "delay": 105000
     }
@@ -75,6 +75,7 @@ async def notify_server(session, server, cpf):
         ) as response:
             return await response.json()
     except Exception as e:
+        print(f"Error notifying server {server['name']}: {str(e)}")  # Add debug log
         return {'error': str(e)}
 
 async def notify_all_servers(cpf):
@@ -109,7 +110,8 @@ def webhook():
                 'server': server['name'],
                 'delay': server['delay'],
                 'url': f"{external_url}/view/",
-                'status': 'success' if 'error' not in results[i] else 'error'
+                'status': 'success' if 'error' not in results[i] else 'error',
+                'error': results[i].get('error') if 'error' in results[i] else None  # Add error details
             })
         
         return jsonify({
