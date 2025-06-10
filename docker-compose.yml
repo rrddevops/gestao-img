@@ -51,7 +51,7 @@ services:
     ports:
       - "8083:5003"
     environment:
-      - DELAY=30
+      - DELAY=15
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -66,7 +66,7 @@ services:
     ports:
       - "8084:5003"
     environment:
-      - DELAY=45
+      - DELAY=25
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -81,7 +81,7 @@ services:
     ports:
       - "8085:5003"
     environment:
-      - DELAY=60
+      - DELAY=35
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -96,7 +96,7 @@ services:
     ports:
       - "8086:5003"
     environment:
-      - DELAY=75
+      - DELAY=45
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -111,7 +111,7 @@ services:
     ports:
       - "8087:5003"
     environment:
-      - DELAY=90
+      - DELAY=55
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -126,7 +126,7 @@ services:
     ports:
       - "8088:5003"
     environment:
-      - DELAY=105
+      - DELAY=65
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres

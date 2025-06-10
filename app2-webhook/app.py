@@ -19,31 +19,31 @@ VISUALIZATION_SERVERS = [
         "name": "Servidor 2",
         "url": "http://visualization2:5003",
         "external_port": "8084",
-        "delay": 45000
+        "delay": 10000
     },
     {
         "name": "Servidor 3",
         "url": "http://visualization3:5003",
         "external_port": "8085",
-        "delay": 60000
+        "delay": 10000
     },
     {
         "name": "Servidor 4",
         "url": "http://visualization4:5003",
         "external_port": "8086",
-        "delay": 75000
+        "delay": 10000
     },
     {
         "name": "Servidor 5",
         "url": "http://visualization5:5003",
         "external_port": "8087",
-        "delay": 90000
+        "delay": 10000
     },
     {
         "name": "Servidor 6",
         "url": "http://visualization6:5003",
         "external_port": "8088",
-        "delay": 105000
+        "delay": 10000
     }
 ]
 
