@@ -2,24 +2,55 @@
 
 Este sistema é composto por três aplicações que trabalham em conjunto para gerenciar o upload, processamento e visualização de imagens associadas a CPFs.
 
+## 🆕 NOVO: Sistema de Agendamento Baseado em DateTime
+
+O sistema foi completamente atualizado para usar controle de tempo baseado em **datetime** em vez de milissegundos, garantindo precisão na ordem de exibição das imagens, especialmente em filas grandes.
+
+### Principais Melhorias
+- ✅ Controle de tempo em formato HH:MM:SS
+- ✅ Agendamento preciso baseado em horário de entrada
+- ✅ Ordenação cronológica automática
+- ✅ Suporte a 6 visualizações simultâneas
+- ✅ Compatibilidade com sistema anterior
+
+### Exemplo de Funcionamento
+Se alguém entrou às **20:00:00** com tempo de espera de **30 segundos**:
+```
+Visualization1: 20:00:30 (entrada + 30s)
+Visualization2: 20:00:40 (+10s)
+Visualization3: 20:00:50 (+10s)
+Visualization4: 20:01:00 (+10s)
+Visualization5: 20:01:10 (+10s)
+Visualization6: 20:01:20 (+10s)
+```
+
+**📖 Para mais detalhes, consulte [README_SCHEDULER.md](README_SCHEDULER.md)**
+
 ## Estrutura do Sistema
 
 ### App 1 - Cadastro de Imagens (Porta 5001)
 - Responsável pelo upload e armazenamento de imagens
-- Armazena as imagens no banco de dados SQLite
+- Armazena as imagens no banco de dados PostgreSQL
 - Endpoint: POST /upload
 
 ### App 2 - Webhook (Porta 5002)
 - Recebe notificações via webhook
-- Encaminha solicitações para a aplicação de visualização
-- Endpoint: POST /webhook
-
-### App 3 - Visualização (Porta 5003)
-- Gerencia a exibição temporizada das imagens
-- Exibe as imagens por 30 segundos
+- Encaminha solicitações para as aplicações de visualização
+- **NOVO**: Suporte a agendamento baseado em horário
 - Endpoints:
-  - POST /display
-  - GET /view/<cpf>
+  - POST /webhook (sistema legado)
+  - POST /schedule (novo sistema)
+  - GET /schedule-status
+
+### App 3 - Visualização (Portas 8083-8088)
+- Gerencia a exibição temporizada das imagens
+- **NOVO**: 6 instâncias com agendamento preciso
+- **NOVO**: Sistema de agendamento baseado em APScheduler
+- Endpoints:
+  - POST /display (sistema legado)
+  - POST /schedule (novo sistema)
+  - GET /schedule-status
+  - GET /view/
   - GET /image/<cpf>
 
 ## Configuração e Execução
@@ -65,26 +96,122 @@ cd app3-visualizacao && python app.py
 curl -X POST -F "image=@caminho/para/imagem.jpg" -F "cpf=12345678900" http://localhost:5001/upload
 ```
 
-### 2. Solicitar Visualização via Webhook
+### 2. Agendamento Baseado em Horário (NOVO)
+
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  -d '{
+    "cpf": "12345678900",
+    "entry_time": "20:00:00",
+    "wait_time": "00:00:30"
+  }' \
+  http://localhost:5002/schedule
+```
+
+### 3. Solicitar Visualização via Webhook (Sistema Legado)
 
 ```bash
 curl -X POST -H "Content-Type: application/json" -d '{"cpf":"12345678900"}' http://localhost:5002/webhook
 ```
 
-### 3. Visualizar a Imagem
+### 4. Visualizar as Imagens
 
-Após o webhook, acesse no navegador:
+Após o agendamento, acesse as visualizações:
 ```
-http://localhost:5003/view/12345678900
+http://localhost:8083/view/ (Visualization1)
+http://localhost:8084/view/ (Visualization2)
+http://localhost:8085/view/ (Visualization3)
+http://localhost:8086/view/ (Visualization4)
+http://localhost:8087/view/ (Visualization5)
+http://localhost:8088/view/ (Visualization6)
 ```
 
-A imagem ficará disponível por exatamente 30 segundos, com um contador regressivo na página. Após esse tempo, a imagem não poderá mais ser visualizada até que um novo webhook seja recebido.
+### 5. Verificar Status dos Agendamentos
+
+```bash
+curl http://localhost:5002/schedule-status
+```
+
+## Scripts de Teste
+
+### Teste Rápido
+```bash
+python test_scheduler.py
+```
+
+### Exemplos Detalhados
+```bash
+python example_usage.py
+```
+
+## Configuração das Visualizações
+
+| Visualização | Porta Externa | Delay (segundos) |
+|--------------|---------------|------------------|
+| visualization1 | 8083 | 0 |
+| visualization2 | 8084 | 10 |
+| visualization3 | 8085 | 20 |
+| visualization4 | 8086 | 30 |
+| visualization5 | 8087 | 40 |
+| visualization6 | 8088 | 50 |
+
+## APIs Disponíveis
+
+### Novo Sistema (Recomendado)
+- `POST /schedule` - Agendamento baseado em horário
+- `GET /schedule-status` - Status dos agendamentos
+
+### Sistema Legado (Compatibilidade)
+- `POST /webhook` - Webhook tradicional
+- `POST /display` - Agendamento com milissegundos
+- `GET /queue-status` - Status da fila
+
+## Estrutura do Banco de Dados
+
+### Tabela: images
+```sql
+CREATE TABLE images (
+    cpf VARCHAR PRIMARY KEY,
+    image_data BYTEA NOT NULL,
+    content_type VARCHAR NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### Tabela: schedule_entries (NOVO)
+```sql
+CREATE TABLE schedule_entries (
+    id VARCHAR PRIMARY KEY,
+    cpf VARCHAR NOT NULL,
+    entry_time TIME NOT NULL,
+    wait_time TIME NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+## Tecnologias Utilizadas
+
+- **Flask**: Framework web
+- **PostgreSQL**: Banco de dados principal
+- **SQLAlchemy**: ORM
+- **APScheduler**: Agendamento de tarefas (NOVO)
+- **Docker Compose**: Orquestração de containers
+
+## Vantagens do Novo Sistema
+
+1. **Precisão**: Controle exato de horários
+2. **Escalabilidade**: Suporte a filas grandes
+3. **Ordenação**: Respeita ordem cronológica
+4. **Flexibilidade**: Configuração por visualização
+5. **Compatibilidade**: Mantém APIs legadas
 
 ## Notas
 
-- O banco de dados SQLite é compartilhado entre as aplicações 1 e 3 através do volume Docker
+- O banco de dados PostgreSQL é compartilhado entre todas as aplicações
 - As imagens são armazenadas diretamente no banco como dados binários
-- O tempo de exibição é fixo em 30 segundos (30000 milissegundos)
-- A aplicação de visualização mantém um registro em memória dos tempos de exibição
+- O sistema mantém compatibilidade total com a versão anterior
 - As aplicações se comunicam através de uma rede Docker interna
-- Os dados persistem mesmo após reiniciar os containers devido ao uso de volumes Docker 
+- Os dados persistem mesmo após reiniciar os containers devido ao uso de volumes Docker
+- O novo sistema usa APScheduler para agendamento preciso de tarefas 
+
+docker-compose logs visualization1 | grep -i "88888888888\|error\|exibindo" 

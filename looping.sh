@@ -17,11 +17,10 @@ cpfs=(
 while true; do
   for cpf in "${cpfs[@]}"; do
     echo "Enviando CPF: $cpf"
-    curl --silent --location 'http://localhost:5002/webhook' \
+    curl --silent --location 'http://localhost:5002/schedule' \
       --header 'Content-Type: application/json' \
       --data "{\"cpf\": \"$cpf\"}"
-    echo -e "\nAguardando 5 segundos..."
+    echo -e "\nAguardando 30 segundos..."
     sleep 5
   done
 done
-
