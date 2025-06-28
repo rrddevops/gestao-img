@@ -1,4 +1,136 @@
-# Changelog - Sistema de Agendamento Baseado em DateTime
+# Changelog - Sistema de Gerenciamento de Imagens
+
+## Versão 2.1.0 - Interface Simplificada do Webhook
+
+### 🆕 Novas Funcionalidades
+
+#### 1. Interface Simplificada do Webhook
+- **Apenas CPF necessário** para agendamento
+- **Gerenciamento automático** de horários pelo servidor
+- **Tempo de espera padrão** de 10 segundos
+- **Resposta detalhada** com horários agendados
+
+#### 2. Formato Simplificado (Recomendado)
+```json
+{
+    "cpf": "12345678900"
+}
+```
+
+**Resposta:**
+```json
+{
+    "message": "Agendamento realizado com sucesso",
+    "cpf": "12345678900",
+    "entry_time": "20:00:00",
+    "wait_time": "00:00:10",
+    "scheduled_times": {
+        "visualization1": "20:00:10",
+        "visualization2": "20:00:20",
+        "visualization3": "20:00:30",
+        "visualization4": "20:00:40",
+        "visualization5": "20:00:50",
+        "visualization6": "20:01:00"
+    }
+}
+```
+
+#### 3. Melhorias no App2-Webhook
+- **Detecção automática** do formato de entrada
+- **Validação inteligente** de parâmetros
+- **Gerenciamento de horários** baseado no tempo do servidor
+- **Compatibilidade total** com formato anterior
+
+### 🔧 Melhorias Técnicas
+
+#### 1. Lógica de Agendamento
+- **Tempo atual do servidor** como referência
+- **Cálculo automático** de horários de exibição
+- **Sincronização precisa** entre visualizações
+- **Tratamento de horários** que passam da meia-noite
+
+#### 2. Validação e Tratamento de Erros
+- **Validação de CPF** no banco de dados
+- **Tratamento de formatos** de entrada
+- **Mensagens de erro** mais claras
+- **Logs detalhados** de processamento
+
+### 📖 Documentação Atualizada
+
+#### Novos Arquivos
+- `EXAMPLES.md` - Exemplos práticos de uso
+- `test_webhook.py` - Script de teste do formato simplificado
+
+#### Documentação Atualizada
+- `README.md` - Destaque para formato simplificado
+- `README_SCHEDULER.md` - Seção sobre interface simplificada
+
+### 🧪 Scripts de Teste
+
+#### Novo Script
+- `test_webhook.py` - Teste rápido do formato simplificado
+- **Agendamento automático** com apenas CPF
+- **Verificação de filas** em todos os visualizadores
+- **Monitoramento** de sincronização
+
+### 🔄 Compatibilidade
+
+#### Formato Anterior Mantido
+- **Formato manual** ainda suportado
+- **Controle de horários** personalizado
+- **Transição gradual** possível
+- **Sem quebra de funcionalidades**
+
+### 🚀 Vantagens da Nova Interface
+
+#### 1. Simplicidade
+- **Menos parâmetros** para enviar
+- **Menos erros** de configuração
+- **Implementação mais rápida**
+- **Menor curva de aprendizado**
+
+#### 2. Automatização
+- **Horários gerenciados** automaticamente
+- **Sincronização precisa** garantida
+- **Menos configuração** manual
+- **Menos pontos de falha**
+
+#### 3. Flexibilidade
+- **Dois formatos** disponíveis
+- **Escolha do usuário** baseada na necessidade
+- **Migração gradual** possível
+- **Compatibilidade total**
+
+### 📊 Exemplos de Uso
+
+#### Formato Simplificado (Recomendado)
+```bash
+curl -X POST http://localhost:5002/schedule \
+  -H "Content-Type: application/json" \
+  -d '{"cpf": "12345678900"}'
+```
+
+#### Formato Manual (Avançado)
+```bash
+curl -X POST http://localhost:5002/schedule \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cpf": "12345678900",
+    "entry_time": "20:00:00",
+    "wait_time": "00:00:30"
+  }'
+```
+
+### 🎯 Próximos Passos
+
+#### Melhorias Futuras
+- **Interface web** para agendamento
+- **Dashboard** de monitoramento
+- **Notificações** em tempo real
+- **API REST** completa
+- **Autenticação** e autorização
+
+---
 
 ## Versão 2.0.0 - Sistema de Agendamento Baseado em DateTime
 
@@ -173,7 +305,12 @@
 python start_system.py
 ```
 
-### Teste Rápido
+### Teste Rápido do Webhook Simplificado
+```bash
+python test_webhook.py
+```
+
+### Teste Completo do Sistema
 ```bash
 python test_scheduler.py
 ```
@@ -196,5 +333,5 @@ docker-compose down
 ---
 
 **Data da Release:** $(date)
-**Versão:** 2.0.0
+**Versão:** 2.1.0
 **Compatibilidade:** Total com versão anterior 
