@@ -4,8 +4,12 @@ import os
 import asyncio
 import aiohttp
 from datetime import datetime
+import pytz
 
 app = Flask(__name__)
+
+# Configuração de timezone para Brasília
+TIMEZONE = pytz.timezone('America/Sao_Paulo')
 
 # Configuração dos servidores de visualização
 VISUALIZATION_SERVERS = [
@@ -47,6 +51,10 @@ VISUALIZATION_SERVERS = [
     }
 ]
 
+def get_brasilia_now():
+    """Retorna o horário atual de Brasília"""
+    return datetime.now(TIMEZONE)
+
 def get_external_url(internal_url, external_port):
     """Converte URL interno para URL externo"""
     return f"http://localhost:{external_port}"
@@ -67,6 +75,7 @@ def index():
 async def notify_server_schedule(session, server, cpf, entry_time, wait_time):
     """Notifica servidor usando novo sistema de agendamento"""
     try:
+        print(f"DEBUG: Notificando {server['name']} em {server['url']}/schedule")
         async with session.post(
             f"{server['url']}/schedule",
             json={
@@ -75,9 +84,11 @@ async def notify_server_schedule(session, server, cpf, entry_time, wait_time):
                 'wait_time': wait_time
             }
         ) as response:
-            return await response.json()
+            result = await response.json()
+            print(f"DEBUG: Resposta de {server['name']}: {result}")
+            return result
     except Exception as e:
-        print(f"Error notifying server {server['name']}: {str(e)}")
+        print(f"ERROR: Erro notificando servidor {server['name']}: {str(e)}")
         return {'error': str(e)}
 
 async def notify_server_legacy(session, server, cpf):
@@ -97,12 +108,18 @@ async def notify_server_legacy(session, server, cpf):
 
 async def notify_all_servers_schedule(cpf, entry_time, wait_time):
     """Notifica todos os servidores usando novo sistema de agendamento"""
+    print(f"DEBUG: Iniciando notificação para {len(VISUALIZATION_SERVERS)} servidores")
     async with aiohttp.ClientSession() as session:
-        tasks = [
-            notify_server_schedule(session, server, cpf, entry_time, wait_time)
-            for server in VISUALIZATION_SERVERS
-        ]
-        return await asyncio.gather(*tasks)
+        tasks = []
+        for server in VISUALIZATION_SERVERS:
+            print(f"DEBUG: Criando task para {server['name']}")
+            task = notify_server_schedule(session, server, cpf, entry_time, wait_time)
+            tasks.append(task)
+        
+        print(f"DEBUG: Executando {len(tasks)} tasks em paralelo")
+        results = await asyncio.gather(*tasks)
+        print(f"DEBUG: Resultados obtidos: {results}")
+        return results
 
 async def notify_all_servers_legacy(cpf):
     """Notifica todos os servidores usando sistema legado"""
@@ -121,13 +138,20 @@ def webhook():
     if not cpf:
         return jsonify({'error': 'CPF não fornecido'}), 400
 
+    # Gerencia automaticamente a data/hora
+    now = get_brasilia_now()
+    entry_time = now.strftime('%H:%M:%S')  # Horário atual de Brasília
+    wait_time = "00:00:10"  # 10 segundos de espera padrão
+    
+    print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time}")
+
     # Criar um loop de eventos para chamadas assíncronas
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
     try:
-        # Notificar todos os servidores de forma assíncrona (sistema legado)
-        results = loop.run_until_complete(notify_all_servers_legacy(cpf))
+        # Notificar todos os servidores usando novo sistema de agendamento
+        results = loop.run_until_complete(notify_all_servers_schedule(cpf, entry_time, wait_time))
         
         # Preparar URLs de visualização
         view_urls = []
@@ -142,7 +166,10 @@ def webhook():
             })
         
         return jsonify({
-            'message': 'Notificações enviadas',
+            'message': 'Agendamento realizado com sucesso',
+            'cpf': cpf,
+            'entry_time': entry_time,
+            'wait_time': wait_time,
             'view_urls': view_urls
         }), 200
         
@@ -162,8 +189,8 @@ def schedule_webhook():
         return jsonify({'error': 'CPF é obrigatório'}), 400
     
     # Gerencia automaticamente a data/hora
-    now = datetime.now()
-    entry_time = now.strftime('%H:%M:%S')  # Horário atual do servidor
+    now = get_brasilia_now()
+    entry_time = now.strftime('%H:%M:%S')  # Horário atual de Brasília
     wait_time = "00:00:10"  # 10 segundos de espera padrão
     
     print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time}")
@@ -214,6 +241,68 @@ def schedule_status():
             return jsonify({'error': 'Erro ao obter status dos agendamentos'}), 500
     except Exception as e:
         return jsonify({'error': f'Erro ao conectar com servidor: {str(e)}'}), 500
+
+@app.route('/display', methods=['POST'])
+def schedule_display_legacy():
+    """Rota legada para compatibilidade - converte milissegundos para datetime"""
+    data = request.json
+    cpf = data.get('cpf')
+    display_time_ms = data.get('display_time', 30000)  # tempo em milissegundos
+    
+    if not cpf:
+        return jsonify({'error': 'CPF não fornecido'}), 400
+    
+    # Converte milissegundos para formato HH:MM:SS
+    seconds = display_time_ms // 1000
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    wait_time = f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    
+    # Usa horário atual de Brasília como horário de entrada
+    now = get_brasilia_now()
+    entry_time = now.strftime('%H:%M:%S')
+    
+    # Chama o sistema novo de agendamento diretamente
+    return schedule_webhook_internal(cpf, entry_time, wait_time)
+
+def schedule_webhook_internal(cpf, entry_time, wait_time):
+    """Função interna para processar agendamento"""
+    print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time}")
+
+    # Criar um loop de eventos para chamadas assíncronas
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        # Notificar todos os servidores usando novo sistema de agendamento
+        results = loop.run_until_complete(notify_all_servers_schedule(cpf, entry_time, wait_time))
+        
+        # Preparar URLs de visualização
+        view_urls = []
+        for i, server in enumerate(VISUALIZATION_SERVERS):
+            external_url = get_external_url(server['url'], server['external_port'])
+            view_urls.append({
+                'server': server['name'],
+                'delay': server['delay'],
+                'url': f"{external_url}/view/",
+                'status': 'success' if 'error' not in results[i] else 'error',
+                'error': results[i].get('error') if 'error' in results[i] else None
+            })
+        
+        return jsonify({
+            'message': 'Agendamento realizado com sucesso',
+            'cpf': cpf,
+            'entry_time': entry_time,
+            'wait_time': wait_time,
+            'view_urls': view_urls
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Erro ao processar agendamento: {str(e)}'}), 500
+        
+    finally:
+        loop.close()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5002) 
