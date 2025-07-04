@@ -185,11 +185,15 @@ Acesse as URLs de visualização:
 ### Tabela: schedule_entries
 ```sql
 CREATE TABLE schedule_entries (
-    id VARCHAR PRIMARY KEY,           -- CPF + timestamp + delay
+    sequence_id SERIAL PRIMARY KEY,   -- Campo autonumero sequencial
+    id VARCHAR NOT NULL,              -- CPF + visualization + timestamp
     cpf VARCHAR NOT NULL,             -- CPF da pessoa
+    visualization_name VARCHAR NOT NULL, -- Nome da visualização (ex: visualization1)
     entry_time TIME NOT NULL,         -- Horário de entrada (HH:MM:SS)
     wait_time TIME NOT NULL,          -- Tempo de espera (HH:MM:SS)
-    created_at TIMESTAMP DEFAULT NOW()
+    display_time TIME NOT NULL,       -- Horário que será exibido (HH:MM:SS)
+    display_datetime TIMESTAMP WITH TIME ZONE NOT NULL, -- Data e hora completa da exibição
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ```
 

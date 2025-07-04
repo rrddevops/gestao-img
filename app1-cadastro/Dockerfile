@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Executa a migração e depois inicia a aplicação
-CMD python migrate.py && python app.py
+# Inicia a aplicação
+CMD python app.py
 
 EXPOSE 5001 

@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
-from sqlalchemy import create_engine, Column, String, LargeBinary, DateTime, Time
+from sqlalchemy import create_engine, Column, String, LargeBinary, DateTime, Time, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import io
@@ -44,7 +44,8 @@ class Image(Base):
 
 class ScheduleEntry(Base):
     __tablename__ = 'schedule_entries'
-    id = Column(String, primary_key=True)  # CPF + visualization + timestamp
+    sequence_id = Column(Integer, primary_key=True, autoincrement=True)  # Campo autonumero sequencial
+    id = Column(String, nullable=False)  # CPF + visualization + timestamp
     cpf = Column(String, nullable=False)
     visualization_name = Column(String, nullable=False)  # Nome da visualização (ex: visualization1)
     entry_time = Column(Time, nullable=False)  # Horário de entrada (HH:MM:SS)
@@ -537,7 +538,7 @@ def schedule_details():
     """Retorna detalhes dos agendamentos do banco de dados"""
     session = Session()
     try:
-        entries = session.query(ScheduleEntry).order_by(ScheduleEntry.display_datetime).all()
+        entries = session.query(ScheduleEntry).order_by(ScheduleEntry.sequence_id).all()
         
         schedule_details = []
         for entry in entries:
@@ -546,6 +547,7 @@ def schedule_details():
             created_at_brasilia = entry.created_at.astimezone(TIMEZONE)
             
             schedule_details.append({
+                'sequence_id': entry.sequence_id,
                 'id': entry.id,
                 'cpf': entry.cpf,
                 'visualization_name': entry.visualization_name,

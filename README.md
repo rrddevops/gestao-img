@@ -226,11 +226,15 @@ CREATE TABLE images (
 ### Tabela: schedule_entries (NOVO)
 ```sql
 CREATE TABLE schedule_entries (
-    id VARCHAR PRIMARY KEY,
+    sequence_id SERIAL PRIMARY KEY,
+    id VARCHAR NOT NULL,
     cpf VARCHAR NOT NULL,
+    visualization_name VARCHAR NOT NULL,
     entry_time TIME NOT NULL,
     wait_time TIME NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
+    display_time TIME NOT NULL,
+    display_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ```
 
