@@ -107,17 +107,29 @@ async def notify_server_legacy(session, server, cpf):
         return {'error': str(e)}
 
 async def notify_all_servers_schedule(cpf, entry_time, wait_time):
-    """Notifica todos os servidores usando novo sistema de agendamento"""
-    print(f"DEBUG: Iniciando notificação para {len(VISUALIZATION_SERVERS)} servidores")
+    """Notifica apenas o primeiro servidor para criar todos os agendamentos"""
+    print(f"DEBUG: Iniciando notificação para CPF {cpf}")
     async with aiohttp.ClientSession() as session:
-        tasks = []
-        for server in VISUALIZATION_SERVERS:
-            print(f"DEBUG: Criando task para {server['name']}")
-            task = notify_server_schedule(session, server, cpf, entry_time, wait_time)
-            tasks.append(task)
+        # Notifica apenas o primeiro servidor (visualization1) que criará todos os agendamentos
+        first_server = VISUALIZATION_SERVERS[0]
+        print(f"DEBUG: Notificando apenas {first_server['name']} para criar todos os agendamentos")
+        result = await notify_server_schedule(session, first_server, cpf, entry_time, wait_time)
         
-        print(f"DEBUG: Executando {len(tasks)} tasks em paralelo")
-        results = await asyncio.gather(*tasks)
+        # Após criar os agendamentos, notifica todos os servidores para recarregar
+        print(f"DEBUG: Notificando todos os servidores para recarregar agendamentos")
+        reload_tasks = []
+        for server in VISUALIZATION_SERVERS:
+            try:
+                async with session.post(f"{server['url']}/reload-schedules") as response:
+                    reload_result = await response.json()
+                    print(f"DEBUG: Recarregamento em {server['name']}: {reload_result}")
+                    reload_tasks.append(reload_result)
+            except Exception as e:
+                print(f"ERROR: Erro ao recarregar {server['name']}: {str(e)}")
+                reload_tasks.append({'error': str(e)})
+        
+        # Retorna o mesmo resultado para todos os servidores (para compatibilidade)
+        results = [result] * len(VISUALIZATION_SERVERS)
         print(f"DEBUG: Resultados obtidos: {results}")
         return results
 
@@ -141,9 +153,14 @@ def webhook():
     # Gerencia automaticamente a data/hora
     now = get_brasilia_now()
     entry_time = now.strftime('%H:%M:%S')  # Horário atual de Brasília
-    wait_time = "00:00:10"  # 10 segundos de espera padrão
     
-    print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time}")
+    # Calcula wait_time baseado no delay da primeira visualização (visualization1)
+    # O wait_time deve ser o tempo até a primeira exibição
+    first_delay_seconds = 30  # delay_seconds da visualization1
+    wait_time_seconds = first_delay_seconds
+    wait_time = f"00:00:{wait_time_seconds:02d}"
+    
+    print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time} (primeira visualização em {first_delay_seconds}s)")
 
     # Criar um loop de eventos para chamadas assíncronas
     loop = asyncio.new_event_loop()
@@ -191,9 +208,14 @@ def schedule_webhook():
     # Gerencia automaticamente a data/hora
     now = get_brasilia_now()
     entry_time = now.strftime('%H:%M:%S')  # Horário atual de Brasília
-    wait_time = "00:00:10"  # 10 segundos de espera padrão
     
-    print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time}")
+    # Calcula wait_time baseado no delay da primeira visualização (visualization1)
+    # O wait_time deve ser o tempo até a primeira exibição
+    first_delay_seconds = 30  # delay_seconds da visualization1
+    wait_time_seconds = first_delay_seconds
+    wait_time = f"00:00:{wait_time_seconds:02d}"
+    
+    print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time} (primeira visualização em {first_delay_seconds}s)")
 
     # Criar um loop de eventos para chamadas assíncronas
     loop = asyncio.new_event_loop()

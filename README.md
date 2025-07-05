@@ -170,14 +170,34 @@ curl http://localhost:5002/schedule-status
 
 ## Scripts de Teste
 
-### Teste Rápido do Webhook Simplificado
+### Teste com Timing Correto (RECOMENDADO)
+```bash
+python test_webhook_timing.py
+```
+**Características:**
+- Respeita os tempos de exibição configurados
+- Evita sobreposição de imagens
+- Delay entre agendamentos para testes em massa
+- Tempo total estimado: ~6 minutos para 24 CPFs
+
+### Teste Rápido de Timing
+```bash
+python teste_timing_rapido.py
+```
+**Características:**
+- Teste rápido com um CPF
+- Mostra horários esperados de exibição
+- Verifica status dos agendamentos
+- Ideal para validar correções
+
+### Teste Rápido do Webhook
 ```bash
 python test_webhook.py
 ```
 
-### Teste Completo do Sistema
+### Teste Simples
 ```bash
-python test_scheduler.py
+python teste_rapido.py
 ```
 
 ### Exemplos Detalhados
@@ -187,14 +207,26 @@ python example_usage.py
 
 ## Configuração das Visualizações
 
-| Visualização | Porta Externa | Delay (segundos) |
-|--------------|---------------|------------------|
-| visualization1 | 8083 | 0 |
-| visualization2 | 8084 | 10 |
-| visualization3 | 8085 | 20 |
-| visualization4 | 8086 | 30 |
-| visualization5 | 8087 | 40 |
-| visualization6 | 8088 | 50 |
+| Visualização | Porta Externa | Delay (segundos) | Display (segundos) |
+|--------------|---------------|------------------|-------------------|
+| visualization1 | 8083 | 30 | 10 |
+| visualization2 | 8084 | 40 | 10 |
+| visualization3 | 8085 | 50 | 10 |
+| visualization4 | 8086 | 60 | 10 |
+| visualization5 | 8087 | 70 | 10 |
+| visualization6 | 8088 | 80 | 10 |
+
+## ⚠️ Problema de Timing Resolvido
+
+**Problema anterior**: Durante testes em massa, as imagens não respeitavam os tempos de espera configurados.
+
+**Solução implementada**:
+- ✅ `wait_time` agora é baseado no `delay_seconds` da primeira visualização (30s)
+- ✅ Novo script `test_webhook_timing.py` com timing correto
+- ✅ Delay entre agendamentos para evitar sobreposição
+- ✅ **CORRIGIDO**: Alinhamento entre docker-compose e visualization_config.json
+
+**📖 Para detalhes completos, consulte [PROBLEMA_TIMING.md](PROBLEMA_TIMING.md)**
 
 ## APIs Disponíveis
 

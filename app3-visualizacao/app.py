@@ -89,6 +89,8 @@ for viz in config_data["visualizations"]:
         'display_seconds': viz["display_seconds"]
     }
 
+
+
 # Estado global
 current_images = {viz: None for viz in VISUALIZATION_CONFIG.keys()}
 image_display_timers = {}  # Para controlar tempo de exibição
@@ -172,23 +174,10 @@ def adjust_display_datetime(display_datetime, visualization_name):
     return original_datetime
 
 def schedule_image_display(cpf, entry_time_str, wait_time_str):
-    """Agenda a exibição de uma imagem apenas para esta visualização específica"""
+    """Agenda a exibição de uma imagem para todas as visualizações em sequência"""
     try:
         print(f"DEBUG: Iniciando agendamento para CPF {cpf}")
-        
-        # Identifica qual visualização este container representa
-        delay = int(os.getenv('DELAY', 0))
-        viz_name = None
-        for name, config in VISUALIZATION_CONFIG.items():
-            if config['delay_seconds'] == delay:
-                viz_name = name
-                break
-        
-        if not viz_name:
-            print(f"ERROR: Não foi possível identificar a visualização para delay {delay}")
-            return False
-        
-        print(f"DEBUG: Este container representa a visualização: {viz_name}")
+        print(f"DEBUG: VISUALIZATION_CONFIG: {VISUALIZATION_CONFIG}")
         
         # Calcula horário da primeira exibição
         first_display_time = calculate_display_time(entry_time_str, wait_time_str)
@@ -208,50 +197,66 @@ def schedule_image_display(cpf, entry_time_str, wait_time_str):
         
         print(f"DEBUG: Primeira exibição calculada para {first_display_datetime}")
         
-        # Agenda apenas para esta visualização específica
-        config = VISUALIZATION_CONFIG[viz_name]
-        display_datetime = first_display_datetime + timedelta(seconds=config['delay_seconds'])
-        display_time = display_datetime.time()
-        
-        # Cria job único para esta exibição
-        job_id = f"{cpf}_{viz_name}_{display_datetime.strftime('%Y%m%d_%H%M%S')}"
-        
-        # Verifica se já existe um registro com este ID
+        # Agenda para todas as visualizações em sequência (SEM FILTRO)
         session = Session()
         try:
-            existing_entry = session.query(ScheduleEntry).filter_by(id=job_id).first()
-            if existing_entry:
-                print(f"WARNING: Registro já existe para {job_id}, pulando...")
-                return True  # Retorna True pois o registro já existe
+            # Ordena as visualizações pelo número para garantir sequência correta
+            sorted_visualizations = sorted(VISUALIZATION_CONFIG.items(), 
+                                         key=lambda x: int(x[0].replace('visualization', '')))
             
-            # Salva no banco de dados
-            schedule_entry = ScheduleEntry(
-                id=job_id,
-                cpf=cpf,
-                visualization_name=viz_name,
-                entry_time=entry_time_brasilia,
-                wait_time=wait_time_brasilia,
-                display_time=display_time,
-                display_datetime=display_datetime,
-                created_at=get_brasilia_now()
-            )
-            session.add(schedule_entry)
+            print(f"DEBUG: Visualizações ordenadas: {[viz[0] for viz in sorted_visualizations]}")
+            
+            for viz_name, config in sorted_visualizations:
+                print(f"DEBUG: Agendando para {viz_name} (NÃO filtrar por DELAY/nome)")
+                # Calcula horário de exibição para esta visualização
+                # O first_display_datetime já inclui o wait_time (30s), então só adiciona o delta
+                delta_seconds = config['delay_seconds'] - 30  # Remove o delay da primeira visualização
+                display_datetime = first_display_datetime + timedelta(seconds=delta_seconds)
+                display_time = display_datetime.time()
+                
+                # Cria job único para esta exibição com ID baseado na ordem de visualização
+                viz_number = viz_name.replace('visualization', '')
+                job_id = f"{cpf}_{viz_number}_{display_datetime.strftime('%Y%m%d_%H%M%S')}"
+                print(f"DEBUG: Job ID criado: {job_id}")
+                
+                # Verifica se já existe um registro com este ID
+                existing_entry = session.query(ScheduleEntry).filter_by(id=job_id).first()
+                if existing_entry:
+                    print(f"WARNING: Registro já existe para {job_id}, pulando...")
+                    continue
+                
+                # Salva no banco de dados
+                schedule_entry = ScheduleEntry(
+                    id=job_id,
+                    cpf=cpf,
+                    visualization_name=viz_name,
+                    entry_time=entry_time_brasilia,
+                    wait_time=wait_time_brasilia,
+                    display_time=display_time,
+                    display_datetime=display_datetime,
+                    created_at=get_brasilia_now()
+                )
+                session.add(schedule_entry)
+                print(f"DEBUG: Registro adicionado ao session para {viz_name}")
+                
+                # Agenda a exibição
+                scheduler.add_job(
+                    func=display_image,
+                    trigger='date',
+                    run_date=display_datetime,
+                    args=[cpf, viz_name],
+                    id=job_id,
+                    replace_existing=True
+                )
+                print(f"DEBUG: Agendado {cpf} para {viz_name} em {display_datetime}")
+            
+            # Commit de todas as entradas de uma vez
+            print(f"DEBUG: Fazendo commit de {len(sorted_visualizations)} registros...")
             session.commit()
-            
-            # Agenda a exibição
-            scheduler.add_job(
-                func=display_image,
-                trigger='date',
-                run_date=display_datetime,
-                args=[cpf, viz_name],
-                id=job_id,
-                replace_existing=True
-            )
-            
-            print(f"DEBUG: Agendado {cpf} para {viz_name} em {display_datetime}")
+            print(f"SUCCESS: Agendamento concluído para CPF {cpf} em todas as visualizações")
             
         except Exception as e:
-            print(f"ERROR: Erro ao agendar {cpf} para {viz_name}: {str(e)}")
+            print(f"ERROR: Erro ao agendar {cpf}: {str(e)}")
             import traceback
             traceback.print_exc()
             session.rollback()
@@ -259,7 +264,6 @@ def schedule_image_display(cpf, entry_time_str, wait_time_str):
         finally:
             session.close()
         
-        print(f"SUCCESS: Agendamento concluído para CPF {cpf} na visualização {viz_name}")
         return True
         
     except Exception as e:
@@ -341,20 +345,40 @@ def get_current_image():
             viz_name = name
             break
     
+    print(f"DEBUG: /current-image chamado - DELAY={delay}, viz_name={viz_name}")
+    print(f"DEBUG: current_images = {current_images}")
+    
     if viz_name and current_images[viz_name]:
-        return jsonify({'image_url': f'/image/{current_images[viz_name]}'})
+        image_url = f'/image/{current_images[viz_name]}'
+        print(f"DEBUG: Retornando imagem: {image_url}")
+        return jsonify({'image_url': image_url})
     else:
+        print(f"DEBUG: Nenhuma imagem para exibir - viz_name={viz_name}, current_image={current_images.get(viz_name) if viz_name else 'None'}")
         return jsonify({'image_url': None})
 
 @app.route('/schedule', methods=['POST'])
 def schedule_display():
     """Nova rota para agendar exibição baseada em horário"""
+    print("=" * 50)
+    print("DEBUG: FUNÇÃO SCHEDULE_DISPLAY CHAMADA!")
+    print(f"DEBUG: Recebido POST /schedule com dados: {request.json}")
+    print("=" * 50)
+    
+    # Log adicional para debug
+    import sys
+    print(f"DEBUG: Python version: {sys.version}")
+    print(f"DEBUG: Current working directory: {os.getcwd()}")
+    print(f"DEBUG: Files in current directory: {os.listdir('.')}")
+    
     data = request.json
     cpf = data.get('cpf')
     entry_time = data.get('entry_time')  # formato HH:MM:SS
     wait_time = data.get('wait_time')    # formato HH:MM:SS
     
+    print(f"DEBUG: CPF={cpf}, entry_time={entry_time}, wait_time={wait_time}")
+    
     if not all([cpf, entry_time, wait_time]):
+        print(f"DEBUG: Dados obrigatórios não fornecidos")
         return jsonify({'error': 'CPF, entry_time e wait_time são obrigatórios'}), 400
     
     # Valida formato dos tempos
@@ -362,6 +386,7 @@ def schedule_display():
         datetime.strptime(entry_time, '%H:%M:%S')
         datetime.strptime(wait_time, '%H:%M:%S')
     except ValueError:
+        print(f"DEBUG: Formato de tempo inválido")
         return jsonify({'error': 'Formato de tempo inválido. Use HH:MM:SS'}), 400
     
     # Verifica se a imagem existe
@@ -369,11 +394,20 @@ def schedule_display():
     try:
         image = session.query(Image).filter_by(cpf=cpf).first()
         if not image:
+            print(f"DEBUG: Imagem não encontrada para CPF {cpf}")
             return jsonify({'error': 'Imagem não encontrada'}), 404
+        
+        print(f"DEBUG: Imagem encontrada, chamando schedule_image_display")
         
         # Não cria mais registro aqui!
         # Apenas agenda a exibição para todas as visualizações
         if schedule_image_display(cpf, entry_time, wait_time):
+            print(f"DEBUG: Agendamento bem-sucedido")
+            
+            # Recarrega os agendamentos do banco para este container
+            print(f"DEBUG: Recarregando agendamentos após novo agendamento")
+            reload_schedules_from_database()
+            
             return jsonify({
                 'message': 'Exibição agendada com sucesso',
                 'cpf': cpf,
@@ -381,9 +415,13 @@ def schedule_display():
                 'wait_time': wait_time
             }), 200
         else:
+            print(f"DEBUG: Erro no agendamento")
             return jsonify({'error': 'Erro ao agendar exibição'}), 500
                 
     except Exception as e:
+        print(f"DEBUG: Exceção capturada: {str(e)}")
+        import traceback
+        traceback.print_exc()
         session.rollback()
         return jsonify({'error': str(e)}), 500
     finally:
@@ -495,6 +533,17 @@ def schedule_status():
         'total_jobs': len(jobs)
     })
 
+@app.route('/reload-schedules', methods=['POST'])
+def force_reload_schedules():
+    """Força o recarregamento dos agendamentos do banco de dados"""
+    try:
+        print("DEBUG: Recarregamento forçado de agendamentos solicitado")
+        reload_schedules_from_database()
+        return jsonify({'message': 'Agendamentos recarregados com sucesso'}), 200
+    except Exception as e:
+        print(f"Erro ao recarregar agendamentos: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/queue-status')
 def queue_status():
     """Mostra a fila real de agendamentos no banco para este visualizador"""
@@ -569,17 +618,32 @@ def schedule_details():
         session.close()
 
 def reload_schedules_from_database():
-    """Recarrega todos os agendamentos do banco de dados"""
+    """Recarrega agendamentos do banco de dados apenas para esta visualização"""
     try:
         # Limpa todos os jobs existentes antes de recarregar
         scheduler.remove_all_jobs()
         print("Jobs existentes removidos.")
         
+        # Identifica qual visualização este container representa
+        delay = int(os.getenv('DELAY', 0))
+        current_viz_name = None
+        for name, config in VISUALIZATION_CONFIG.items():
+            if config['delay_seconds'] == delay:
+                current_viz_name = name
+                break
+        
+        if not current_viz_name:
+            print(f"ERRO: Não foi possível identificar a visualização para DELAY={delay}")
+            return
+        
+        print(f"DEBUG: Este container representa a visualização: {current_viz_name}")
+        
         session = Session()
-        entries = session.query(ScheduleEntry).all()
+        # Filtra apenas os registros desta visualização específica
+        entries = session.query(ScheduleEntry).filter_by(visualization_name=current_viz_name).all()
         session.close()
         
-        print(f"Recarregando {len(entries)} agendamentos do banco de dados...")
+        print(f"Recarregando {len(entries)} agendamentos para {current_viz_name} do banco de dados...")
         
         for entry in entries:
             # Cria job único para esta exibição baseado no registro existente
@@ -596,7 +660,7 @@ def reload_schedules_from_database():
             
             print(f"Recarregado: {entry.cpf} em {entry.visualization_name} às {entry.display_datetime.strftime('%H:%M:%S')}")
             
-        print(f"Recarregamento concluído. Total de jobs: {len(scheduler.get_jobs())}")
+        print(f"Recarregamento concluído para {current_viz_name}. Total de jobs: {len(scheduler.get_jobs())}")
         
     except Exception as e:
         print(f"Erro ao recarregar agendamentos: {e}")
@@ -637,7 +701,7 @@ def execute_pending_jobs():
             # Se o horário já passou hoje, executa imediatamente
             if display_datetime <= now:
                 print(f"Executando job pendente para CPF {entry.cpf}")
-                display_image(entry.cpf, 'visualization1')  # Executa na primeira visualização
+                display_image(entry.cpf, entry.visualization_name)  # Executa na visualização correta
                 
     except Exception as e:
         print(f"Erro ao executar jobs pendentes: {e}")
@@ -647,4 +711,13 @@ reload_schedules_from_database()
 execute_pending_jobs()
 
 if __name__ == '__main__':
+    # Debug: Mostra configuração e rotas
+    print("=" * 50)
+    print("DEBUG: INICIALIZAÇÃO DO APP")
+    print(f"DEBUG: VISUALIZATION_CONFIG carregado: {VISUALIZATION_CONFIG}")
+    print(f"DEBUG: Rotas registradas:")
+    for rule in app.url_map.iter_rules():
+        print(f"  {rule.rule} -> {rule.endpoint}")
+    print("=" * 50)
+    
     app.run(debug=True, host='0.0.0.0', port=5003) 

@@ -28,33 +28,86 @@
             max-height: 100%;
             object-fit: contain;
         }
+        .debug-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
     <div class="fullscreen-image">
         <img id="currentImage" src="" alt="Imagem em exibição">
     </div>
+    
+    <div class="debug-info" id="debugInfo">
+        Carregando...
+    </div>
 
     <script>
         const currentImage = document.getElementById('currentImage');
+        const debugInfo = document.getElementById('debugInfo');
+        let requestCount = 0;
         
         async function checkCurrentImage() {
+            requestCount++;
             try {
+                console.log(`[${requestCount}] Fazendo requisição para /current-image`);
                 const response = await fetch('/current-image');
+                console.log(`[${requestCount}] Resposta recebida:`, response.status);
+                
                 if (response.ok) {
                     const data = await response.json();
+                    console.log(`[${requestCount}] Dados recebidos:`, data);
+                    
                     if (data.image_url) {
+                        console.log(`[${requestCount}] Definindo imagem: ${data.image_url}`);
                         currentImage.src = data.image_url;
+                        debugInfo.innerHTML = `
+                            Requisição: ${requestCount}<br>
+                            Status: ${response.status}<br>
+                            Imagem: ${data.image_url}<br>
+                            Timestamp: ${new Date().toLocaleTimeString()}
+                        `;
+                    } else {
+                        console.log(`[${requestCount}] Nenhuma imagem para exibir`);
+                        debugInfo.innerHTML = `
+                            Requisição: ${requestCount}<br>
+                            Status: ${response.status}<br>
+                            Imagem: Nenhuma<br>
+                            Timestamp: ${new Date().toLocaleTimeString()}
+                        `;
                     }
+                } else {
+                    console.error(`[${requestCount}] Erro na resposta:`, response.status);
+                    debugInfo.innerHTML = `
+                        Requisição: ${requestCount}<br>
+                        Status: ${response.status} (ERRO)<br>
+                        Timestamp: ${new Date().toLocaleTimeString()}
+                    `;
                 }
             } catch (error) {
-                console.error('Erro ao buscar imagem:', error);
+                console.error(`[${requestCount}] Erro ao buscar imagem:`, error);
+                debugInfo.innerHTML = `
+                    Requisição: ${requestCount}<br>
+                    Status: ERRO<br>
+                    Erro: ${error.message}<br>
+                    Timestamp: ${new Date().toLocaleTimeString()}
+                `;
             }
             
-            // Verifica a cada segundo
-            setTimeout(checkCurrentImage, 1000);
+            // Verifica a cada 500 milissegundos para atualização mais rápida
+            setTimeout(checkCurrentImage, 500);
         }
 
+        // Inicia a verificação
+        console.log('Iniciando verificação de imagens...');
         checkCurrentImage();
     </script>
 </body>
