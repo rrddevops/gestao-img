@@ -1,6 +1,10 @@
+version: '3.8'
+
 services:
-  postgres:
+  # Banco de dados PostgreSQL
+  db:
     image: postgres:14
+    container_name: gestao-img-db
     environment:
       POSTGRES_DB: gestao_img
       POSTGRES_USER: postgres
@@ -9,175 +13,51 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-      - app-network
+      - gestao-img-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gestao_img"]
+      interval: 10s
       timeout: 5s
       retries: 5
-    user: "999:999"
 
-  app1-cadastro:
-    build: ./app1-cadastro
-    ports:
-      - "5001:5001"
-    volumes:
-      - ./app1-cadastro:/app
-    environment:
-      - POSTGRES_DB=gestao_img
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_HOST=postgres
-    depends_on:
-      - postgres
-    networks:
-      - app-network
-
-  app2-webhook:
-    build: ./app2-webhook
-    ports:
-      - "5002:5002"
-    volumes:
-      - ./app2-webhook:/app
-    environment:
-      - POSTGRES_DB=gestao_img
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_HOST=postgres
-    depends_on:
-      - postgres
-      - websocket-server
-    networks:
-      - app-network
-
-  websocket-server:
+  # Backend FastAPI
+  backend:
     build: .
+    container_name: gestao-img-backend
     ports:
-      - "8765:8765"
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/gestao_img
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
-      - .:/app
-    command: python websocket_server.py
+      - ./app:/app/app
+      - ./static:/app/static
     networks:
-      - app-network
+      - gestao-img-network
+    restart: unless-stopped
 
-  visualization1:
-    build: ./app3-visualizacao
+  # Frontend Nginx (opcional - para servir as páginas de visualização)
+  frontend:
+    image: nginx:alpine
+    container_name: gestao-img-frontend
     ports:
-      - "8083:5003"
-    environment:
-      - POSTGRES_DB=gestao_img
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_HOST=postgres
-      - DELAY=30
-      - EXTERNAL_PORT=8083
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./static:/usr/share/nginx/html
     depends_on:
-      postgres:
-        condition: service_healthy
-      websocket-server:
-        condition: service_started
+      - backend
     networks:
-      - app-network
-
-  visualization2:
-    build: ./app3-visualizacao
-    ports:
-      - "8084:5003"
-    environment:
-      - POSTGRES_DB=gestao_img
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_HOST=postgres
-      - DELAY=40
-      - EXTERNAL_PORT=8084
-    depends_on:
-      postgres:
-        condition: service_healthy
-      websocket-server:
-        condition: service_started
-    networks:
-      - app-network
-
-  visualization3:
-    build: ./app3-visualizacao
-    ports:
-      - "8085:5003"
-    environment:
-      - POSTGRES_DB=gestao_img
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_HOST=postgres
-      - DELAY=50
-      - EXTERNAL_PORT=8085
-    depends_on:
-      postgres:
-        condition: service_healthy
-      websocket-server:
-        condition: service_started
-    networks:
-      - app-network
-
-  visualization4:
-    build: ./app3-visualizacao
-    ports:
-      - "8086:5003"
-    environment:
-      - POSTGRES_DB=gestao_img
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_HOST=postgres
-      - DELAY=60
-      - EXTERNAL_PORT=8086
-    depends_on:
-      postgres:
-        condition: service_healthy
-      websocket-server:
-        condition: service_started
-    networks:
-      - app-network
-
-  visualization5:
-    build: ./app3-visualizacao
-    ports:
-      - "8087:5003"
-    environment:
-      - POSTGRES_DB=gestao_img
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_HOST=postgres
-      - DELAY=70
-      - EXTERNAL_PORT=8087
-    depends_on:
-      postgres:
-        condition: service_healthy
-      websocket-server:
-        condition: service_started
-    networks:
-      - app-network
-
-  visualization6:
-    build: ./app3-visualizacao
-    ports:
-      - "8088:5003"
-    environment:
-      - POSTGRES_DB=gestao_img
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_HOST=postgres
-      - DELAY=80
-      - EXTERNAL_PORT=8088
-    depends_on:
-      postgres:
-        condition: service_healthy
-      websocket-server:
-        condition: service_started
-    networks:
-      - app-network
-
-networks:
-  app-network:
-    driver: bridge
+      - gestao-img-network
+    restart: unless-stopped
 
 volumes:
-  postgres_data: 
+  postgres_data:
+
+networks:
+  gestao-img-network:
+    driver: bridge 

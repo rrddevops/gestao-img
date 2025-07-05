@@ -1,417 +1,327 @@
-# Sistema de Gerenciamento de Imagens com WebSockets
+# Sistema de Gerenciamento de Imagens com FastAPI
 
-Este sistema é composto por aplicações que trabalham em conjunto para gerenciar o upload, processamento e visualização de imagens associadas a CPFs usando **comunicação em tempo real via WebSockets**.
+Sistema completo para cadastro, agendamento e exibição de imagens por CPF usando FastAPI, PostgreSQL, WebSockets e APScheduler.
 
-## 🆕 NOVO: Sistema WebSocket em Tempo Real
+## 🏗️ Arquitetura
 
-O sistema foi completamente refatorado para usar **WebSockets** em vez de agendamento baseado em banco de dados, garantindo comunicação instantânea e exibição imediata das imagens.
-
-### Principais Melhorias
-- ✅ **Comunicação em tempo real** via WebSockets
-- ✅ **Exibição instantânea** das imagens
-- ✅ **Sincronização garantida** entre visualizadores
-- ✅ **Conexões persistentes** com heartbeats
-- ✅ **Reconexão automática** em caso de falha
-- ✅ **Monitoramento em tempo real** dos servidores
-- ✅ **Eliminação de delays** de agendamento
-
-### Arquitetura WebSocket
 ```
-┌─────────────────┐    WebSocket    ┌─────────────────┐
-│   Webhook       │ ──────────────► │  Servidor       │
-│   (Porta 5002)  │                 │  WebSocket      │
-└─────────────────┘                 │  (Porta 8765)   │
+┌─────────────────┐    HTTP POST    ┌─────────────────┐    WebSocket    ┌─────────────────┐
+│   Cliente       │ ──────────────► │   FastAPI       │ ──────────────► │  Visualizações  │
+│   Externo       │                 │   Backend       │                 │  (6 páginas)    │
+│                 │                 │   (Porta 8000)  │                 │                 │
+└─────────────────┘                 └─────────────────┘                 └─────────────────┘
+                                            │
+                                            │ APScheduler
+                                            ▼
+                                    ┌─────────────────┐
+                                    │   PostgreSQL    │
+                                    │   (Porta 5432)  │
                                     └─────────────────┘
-                                           │
-                                           │ Broadcast
-                                           ▼
-┌─────────────────┐    WebSocket    ┌─────────────────┐
-│ Visualization1  │ ◄────────────── │                 │
-│ (Porta 8083)    │                 │                 │
-└─────────────────┘                 │                 │
-                                    │                 │
-┌─────────────────┐    WebSocket    │                 │
-│ Visualization2  │ ◄────────────── │                 │
-│ (Porta 8084)    │                 │                 │
-└─────────────────┘                 │                 │
-                                    │                 │
-┌─────────────────┐    WebSocket    │                 │
-│ Visualization3  │ ◄────────────── │                 │
-│ (Porta 8085)    │                 │                 │
-└─────────────────┘                 │                 │
-                                    │                 │
-┌─────────────────┐    WebSocket    │                 │
-│ Visualization4  │ ◄────────────── │                 │
-│ (Porta 8086)    │                 │                 │
-└─────────────────┘                 │                 │
-                                    │                 │
-┌─────────────────┐    WebSocket    │                 │
-│ Visualization5  │ ◄────────────── │                 │
-│ (Porta 8087)    │                 │                 │
-└─────────────────┘                 │                 │
-                                    │                 │
-┌─────────────────┐    WebSocket    │                 │
-│ Visualization6  │ ◄────────────── │                 │
-│ (Porta 8088)    │                 │                 │
-└─────────────────┘                 └─────────────────┘
 ```
 
-**📖 Para mais detalhes, consulte [README_WEBSOCKET.md](README_WEBSOCKET.md)**
+## 🚀 Como Executar
 
-## Estrutura do Sistema
+### 1. Usando Docker Compose (Recomendado)
 
-### App 1 - Cadastro de Imagens (Porta 5001)
-- Responsável pelo upload e armazenamento de imagens
-- Armazena as imagens no banco de dados PostgreSQL
-- Endpoint: POST /upload
-
-### App 2 - Webhook (Porta 5002)
-- Recebe notificações via webhook
-- **NOVO**: Envia comandos via WebSocket para exibição instantânea
-- **NOVO**: Comunicação em tempo real
-- Endpoints:
-  - POST /webhook (sistema WebSocket)
-  - POST /schedule (sistema WebSocket)
-  - GET /schedule-status
-
-### Servidor WebSocket Central (Porta 8765)
-- **NOVO**: Gerencia conexões de todos os servidores de visualização
-- **NOVO**: Distribui comandos de exibição em tempo real
-- **NOVO**: Monitora status dos clientes conectados
-- **NOVO**: Suporte a heartbeats e reconexão automática
-
-### App 3 - Visualização (Portas 8083-8088)
-- **NOVO**: 6 instâncias com conexão WebSocket
-- **NOVO**: Exibição instantânea via WebSocket
-- **NOVO**: Cliente WebSocket que se conecta ao servidor central
-- Endpoints:
-  - GET /view/ (interface de visualização)
-  - GET /current-image (imagem atual)
-  - GET /image/<cpf> (imagem específica)
-  - GET /schedule-status (status do servidor)
-
-## Configuração e Execução
-
-### Usando Docker Compose (Recomendado)
-
-1. Construa e inicie todos os serviços:
 ```bash
+# Construir e iniciar todos os serviços
 docker-compose up -d --build
+
+# Verificar status dos containers
+docker-compose ps
+
+# Ver logs
+docker-compose logs -f backend
 ```
 
-2. Para parar todos os serviços:
-```bash
-docker-compose down
-```
-
-### Usando Python local (Desenvolvimento)
-
-1. Instale as dependências de cada aplicação:
-```bash
-cd app1-cadastro && pip install -r requirements.txt
-cd ../app2-webhook && pip install -r requirements.txt
-cd ../app3-visualizacao && pip install -r requirements.txt
-```
-
-2. Inicie cada aplicação em um terminal separado:
-```bash
-# Terminal 1
-cd app1-cadastro && python app.py
-
-# Terminal 2
-cd app2-webhook && python app.py
-
-# Terminal 3
-cd app3-visualizacao && python app.py
-```
-
-## Como Usar
-
-### 1. Cadastrar uma Imagem
+### 2. Execução Local (Desenvolvimento)
 
 ```bash
-curl -X POST -F "image=@caminho/para/imagem.jpg" -F "cpf=12345678900" http://localhost:5001/upload
+# Instalar dependências
+pip install -r requirements.txt
+
+# Configurar variável de ambiente
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/gestao_img"
+
+# Executar aplicação
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 2. Exibição Instantânea via WebSocket (NOVO - RECOMENDADO)
+## 📋 Funcionalidades
 
-**Exibição imediata via WebSocket!** O sistema envia comandos em tempo real:
+### 1. 📝 Cadastro
+- **Interface Web**: http://localhost:8000/cadastro
+- **API**: `POST /cadastro/` - Cadastra CPF e imagem
+- **Armazenamento**: Imagens em Base64 no PostgreSQL
 
+### 2. 🔗 Webhook
+- **API**: `POST /webhook/` - Recebe CPF e cria eventos
+- **Funcionalidade**: 
+  - Consulta hora atual
+  - Cria 6 eventos cronológicos (visualization1-6)
+  - Calcula horários baseado em parâmetros
+
+### 3. ⏰ Agendador (APScheduler)
+- **Verificação**: A cada segundo
+- **Funcionalidade**: Busca eventos ativos e envia via WebSocket
+- **Status**: `GET /scheduler/status`
+
+### 4. 📺 Visualizações
+- **Páginas**: 6 visualizações independentes
+- **WebSocket**: Conexão em tempo real
+- **Exibição**: Imagens por 10 segundos
+- **URLs**:
+  - http://localhost:8000/visualization1
+  - http://localhost:8000/visualization2
+  - http://localhost:8000/visualization3
+  - http://localhost:8000/visualization4
+  - http://localhost:8000/visualization5
+  - http://localhost:8000/visualization6
+
+## 🗄️ Banco de Dados
+
+### Tabelas
+
+#### `cadastro`
+```sql
+CREATE TABLE cadastro (
+    cpf TEXT PRIMARY KEY,
+    caminho_imagem TEXT NOT NULL
+);
+```
+
+#### `parametros`
+```sql
+CREATE TABLE parametros (
+    nome TEXT PRIMARY KEY,
+    valor TEXT NOT NULL
+);
+```
+
+#### `eventos`
+```sql
+CREATE TABLE eventos (
+    id SERIAL PRIMARY KEY,
+    cpf TEXT NOT NULL,
+    visualization TEXT NOT NULL,
+    hora_acesso TIME NOT NULL,
+    delay INTERVAL NOT NULL,
+    hora_exibicao TIME NOT NULL,
+    hora_fim TIME NOT NULL
+);
+```
+
+### Parâmetros Padrão
+- `tempo_inicial_segundos`: 30 (delay para primeira visualização)
+- `incremento_segundos`: 10 (incremento para próximas visualizações)
+- `duracao_exibicao_seg`: 10 (tempo de exibição da imagem)
+
+## 🔧 API Endpoints
+
+### Cadastro
+- `GET /cadastro/` - Interface de cadastro
+- `POST /cadastro/` - Cadastrar CPF e imagem
+- `GET /cadastro/` - Listar cadastros
+- `GET /cadastro/{cpf}` - Obter cadastro específico
+- `DELETE /cadastro/{cpf}` - Deletar cadastro
+
+### Webhook
+- `POST /webhook/` - Processar webhook
+- `GET /webhook/eventos` - Listar eventos
+- `GET /webhook/eventos/{cpf}` - Eventos de um CPF
+- `DELETE /webhook/eventos/{cpf}` - Deletar eventos de um CPF
+
+### WebSocket
+- `WS /websocket/{visualization}` - Conexão WebSocket
+- `POST /websocket/send/{visualization}` - Enviar mensagem
+- `GET /websocket/status` - Status das conexões
+
+### Sistema
+- `GET /` - Página inicial
+- `GET /scheduler/status` - Status do agendador
+- `GET /docs` - Documentação da API
+
+## 🧪 Testes
+
+### Script de Teste Automatizado
 ```bash
-# Enviar CPF para exibição instantânea
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"cpf": "12345678900"}' \
-  http://localhost:5002/webhook
+python test_system.py
 ```
 
-**Resposta:**
-```json
-{
-  "message": "CPF 12345678900 enviado para exibição via WebSocket",
-  "cpf": "12345678900",
-  "entry_time": "20:00:00",
-  "wait_time": "00:00:30",
-  "websocket_result": {
-    "success": true,
-    "message": "Comando enviado via WebSocket"
-  },
-  "view_urls": [
-    {
-      "server": "Servidor 1",
-      "url": "http://localhost:8083/view/",
-      "websocket_result": {"success": true}
-    }
-  ]
-}
-```
+### Teste Manual
 
-### 3. Verificar Status dos Servidores
-
+#### 1. Cadastrar CPF
 ```bash
-# Status dos agendamentos
-curl http://localhost:5002/schedule-status
-
-# Status de cada visualização
-curl http://localhost:8083/schedule-status
-curl http://localhost:8084/schedule-status
-# ... etc
+curl -X POST http://localhost:8000/cadastro/ \
+  -F "cpf=12345678901" \
+  -F "imagem=@caminho/para/imagem.jpg"
 ```
 
-### 5. Visualizar as Imagens
-
-Após o agendamento, acesse as visualizações:
-```
-http://localhost:8083/view/ (Visualization1)
-http://localhost:8084/view/ (Visualization2)
-http://localhost:8085/view/ (Visualization3)
-http://localhost:8086/view/ (Visualization4)
-http://localhost:8087/view/ (Visualization5)
-http://localhost:8088/view/ (Visualization6)
-```
-
-### 6. Verificar Status dos Agendamentos
-
+#### 2. Enviar Webhook
 ```bash
-curl http://localhost:5002/schedule-status
+curl -X POST http://localhost:8000/webhook/ \
+  -H "Content-Type: application/json" \
+  -d '{"cpf":"12345678901"}'
 ```
 
-## Scripts de Teste
-
-### Teste do Sistema WebSocket (RECOMENDADO)
+#### 3. Verificar Eventos
 ```bash
-python teste_websocket.py
-```
-**Características:**
-- Testa conexão com servidor WebSocket
-- Verifica webhook com WebSocket
-- Testa todos os servidores de visualização
-- Mostra status completo do sistema
-
-### Teste Manual via PowerShell
-```powershell
-# Enviar webhook
-Invoke-RestMethod -Uri "http://localhost:5002/webhook" -Method POST -ContentType "application/json" -Body '{"cpf":"11111111111"}'
-
-# Verificar status
-Invoke-RestMethod -Uri "http://localhost:8083/schedule-status" -Method GET
+curl http://localhost:8000/webhook/eventos
 ```
 
-### Teste Manual via curl (Linux/Mac)
+#### 4. Status do Sistema
 ```bash
-# Enviar webhook
-curl -X POST http://localhost:5002/webhook -H 'Content-Type: application/json' -d '{"cpf":"11111111111"}'
+curl http://localhost:8000/scheduler/status
+curl http://localhost:8000/websocket/status
+```
 
-# Verificar status
-curl http://localhost:8083/schedule-status
-
-## Monitoramento e Logs
+## 📊 Monitoramento
 
 ### Logs dos Containers
 ```bash
-# Servidor WebSocket
-docker logs gestao-img-websocket-server-1
+# Backend
+docker-compose logs -f backend
 
-# Webhook Server
-docker logs gestao-img-app2-webhook-1
+# Banco de dados
+docker-compose logs -f db
 
-# Servidores de Visualização
-docker logs gestao-img-visualization1-1
-docker logs gestao-img-visualization2-1
-# ... etc
+# Frontend (se usando Nginx)
+docker-compose logs -f frontend
 ```
 
-### Status dos Serviços
+### Status em Tempo Real
+- **Página inicial**: http://localhost:8000 (mostra status do sistema)
+- **API Docs**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/health
+
+## 🔄 Fluxo de Funcionamento
+
+1. **Cadastro**: CPF e imagem são cadastrados via interface web
+2. **Webhook**: CPF é enviado via webhook
+3. **Agendamento**: Sistema cria 6 eventos cronológicos
+4. **Agendador**: Verifica eventos a cada segundo
+5. **WebSocket**: Envia comandos para visualizações ativas
+6. **Exibição**: Imagens são exibidas por 10 segundos
+
+## 🛠️ Desenvolvimento
+
+### Estrutura do Projeto
+```
+gestao-img/
+├── app/
+│   ├── __init__.py
+│   ├── main.py              # Aplicação principal
+│   ├── database.py          # Configuração do banco
+│   ├── models.py            # Modelos SQLAlchemy
+│   ├── schemas.py           # Schemas Pydantic
+│   ├── scheduler.py         # Agendador APScheduler
+│   └── views/
+│       ├── __init__.py
+│       ├── cadastro.py      # Módulo de cadastro
+│       ├── webhook.py       # Módulo de webhook
+│       ├── websocket.py     # Módulo WebSocket
+│       └── visualization.py # Páginas de visualização
+├── static/                  # Arquivos estáticos
+├── docker-compose.yml       # Configuração Docker
+├── Dockerfile              # Imagem Docker
+├── requirements.txt        # Dependências Python
+├── init.sql               # Inicialização do banco
+├── nginx.conf             # Configuração Nginx
+└── test_system.py         # Script de teste
+```
+
+### Variáveis de Ambiente
+- `DATABASE_URL`: URL de conexão com PostgreSQL
+- `WEBSOCKET_PORT`: Porta do WebSocket (padrão: 8000)
+
+## 🚨 Troubleshooting
+
+### Problemas Comuns
+
+#### 1. Erro de compatibilidade do PostgreSQL
+```
+FATAL: database files are incompatible with server
+DETAIL: The data directory was initialized by PostgreSQL version 14, which is not compatible with this version 15
+```
+
+**Solução:**
 ```bash
-# Verificar containers rodando
-docker ps
+# Linux/Mac
+chmod +x fix_postgres.sh
+./fix_postgres.sh
 
-# Verificar logs em tempo real
-docker logs -f gestao-img-websocket-server-1
+# Windows
+fix_postgres.bat
 ```
 
-### Verificação de Conexões WebSocket
-- O servidor WebSocket mostra conexões ativas
-- Cada visualização envia heartbeats a cada 30 segundos
-- Reconexão automática em caso de falha
-- Logs detalhados de comandos enviados/recebidos
-
-### Exemplos Detalhados
+**Ou manualmente:**
 ```bash
-python example_usage.py
+# Opção 1: Limpar dados e usar PostgreSQL 15 (recomendado)
+docker-compose down -v
+docker-compose up -d --build
+
+# Opção 2: Manter dados e usar PostgreSQL 14
+docker-compose down
+# Editar docker-compose.yml: mudar postgres:15 para postgres:14
+docker-compose up -d --build
 ```
 
-## Configuração Centralizada das Visualizações
+#### 2. Banco não conecta
+```bash
+# Verificar se PostgreSQL está rodando
+docker-compose ps db
 
-A partir da versão mais recente, **todas as configurações de visualização** (delay, display_seconds, portas, etc.) são centralizadas na tabela `visualization_config` do banco de dados PostgreSQL.
-
-- **Não é mais necessário configurar variáveis de ambiente DELAY** no `docker-compose.yml`.
-- **Não é mais necessário editar arquivos JSON de configuração**.
-- Todos os parâmetros podem ser consultados e alterados via API REST ou pelo script `gerenciar_configuracoes.py`.
-
-### Como Gerenciar as Configurações
-
-- Para ver todas as configurações atuais:
-  ```bash
-  python gerenciar_configuracoes.py mostrar
-  ```
-- Para atualizar uma visualização específica:
-  ```bash
-  python gerenciar_configuracoes.py atualizar visualization1 45 15
-  # (atualiza o delay para 45s e o tempo de exibição para 15s)
-  ```
-- Para resetar todas as configurações para os valores padrão:
-  ```bash
-  python gerenciar_configuracoes.py resetar
-  ```
-
-### Endpoints Úteis
-
-- `GET /config` — retorna a configuração resumida da instância
-- `GET /config/all` — retorna todas as configurações detalhadas do banco
-- `POST /config` — atualiza parâmetros de uma visualização
-- `POST /config/reset` — reseta todas as configurações para os padrões
-
-### Observações
-
-- Ao alterar as configurações, os agendamentos são recarregados automaticamente.
-- O sistema sempre consulta o banco para saber os parâmetros de cada visualização.
-- O bloco de inicialização padrão só é usado se o banco estiver vazio (primeira execução ou reset).
-
-## ⚠️ Problema de Timing Resolvido
-
-**Problema anterior**: Durante testes em massa, as imagens não respeitavam os tempos de espera configurados.
-
-**Solução implementada**:
-- ✅ `wait_time` agora é baseado no `delay_seconds` da primeira visualização (30s)
-- ✅ Novo script `test_webhook_timing.py` com timing correto
-- ✅ Delay entre agendamentos para evitar sobreposição
-- ✅ **CORRIGIDO**: Alinhamento entre docker-compose e visualization_config.json
-
-**📖 Para detalhes completos, consulte [PROBLEMA_TIMING.md](PROBLEMA_TIMING.md)**
-
-## APIs Disponíveis
-
-### Novo Sistema Simplificado (Recomendado)
-- `POST /schedule` - Agendamento simplificado (apenas CPF)
-- `GET /schedule-status` - Status dos agendamentos
-
-### Sistema Avançado
-- `POST /schedule` - Agendamento com controle manual de horários
-- `GET /schedule-status` - Status dos agendamentos
-
-### Sistema Legado (Compatibilidade)
-- `POST /webhook` - Webhook tradicional
-- `POST /display` - Agendamento com milissegundos
-- `GET /queue-status` - Status da fila
-
-## Estrutura do Banco de Dados
-
-### Tabela: images
-```sql
-CREATE TABLE images (
-    cpf VARCHAR PRIMARY KEY,
-    image_data BYTEA NOT NULL,
-    content_type VARCHAR NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
-);
+# Verificar logs
+docker-compose logs db
 ```
 
-### Tabela: schedule_entries (NOVO)
-```sql
-CREATE TABLE schedule_entries (
-    sequence_id SERIAL PRIMARY KEY,
-    id VARCHAR NOT NULL,
-    cpf VARCHAR NOT NULL,
-    visualization_name VARCHAR NOT NULL,
-    entry_time TIME NOT NULL,
-    wait_time TIME NOT NULL,
-    display_time TIME NOT NULL,
-    display_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
-
-## Tecnologias Utilizadas
-
-- **Flask**: Framework web
-- **PostgreSQL**: Banco de dados principal
-- **SQLAlchemy**: ORM
-- **APScheduler**: Agendamento de tarefas (NOVO)
-- **Docker Compose**: Orquestração de containers
-
-## Vantagens do Novo Sistema
-
-1. **Simplicidade**: Apenas CPF necessário para agendamento
-2. **Precisão**: Controle exato de horários
-3. **Escalabilidade**: Suporte a filas grandes
-4. **Ordenação**: Respeita ordem cronológica
-5. **Flexibilidade**: Configuração por visualização
-6. **Compatibilidade**: Mantém APIs legadas
-
-## Exemplos de Uso
-
-### Python
-```python
-import requests
-
-# Agendamento simplificado
-response = requests.post('http://localhost:5002/schedule', 
-                        json={'cpf': '12345678900'})
-print(response.json())
-
+#### 3. WebSocket não funciona
+```bash
 # Verificar status
-status = requests.get('http://localhost:5002/schedule-status').json()
-print(f"Total de jobs: {status['total_jobs']}")
+curl http://localhost:8000/websocket/status
+
+# Verificar logs do backend
+docker-compose logs backend
 ```
 
-### JavaScript/Node.js
-```javascript
-const response = await fetch('http://localhost:5002/schedule', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cpf: '12345678900' })
-});
-const result = await response.json();
-console.log(result);
-```
-
-### cURL
+#### 4. Agendador não processa eventos
 ```bash
-# Agendamento simples
-curl -X POST http://localhost:5002/schedule \
-  -H "Content-Type: application/json" \
-  -d '{"cpf": "12345678900"}'
+# Verificar status do agendador
+curl http://localhost:8000/scheduler/status
 
-# Verificar filas
-curl http://localhost:8083/queue-status
+# Verificar eventos no banco
+docker-compose exec db psql -U postgres -d gestao_img -c "SELECT * FROM eventos;"
 ```
 
-## Notas
+### Comandos Úteis
+```bash
+# Reiniciar serviços
+docker-compose restart
 
-- O banco de dados PostgreSQL é compartilhado entre todas as aplicações
-- As imagens são armazenadas diretamente no banco como dados binários
-- O sistema mantém compatibilidade total com a versão anterior
-- As aplicações se comunicam através de uma rede Docker interna
-- Os dados persistem mesmo após reiniciar os containers devido ao uso de volumes Docker
-- O novo sistema usa APScheduler para agendamento preciso de tarefas
-- **NOVO**: O webhook simplificado gerencia automaticamente os horários baseado no tempo atual do servidor 
+# Reconstruir containers
+docker-compose up -d --build
+
+# Limpar volumes (cuidado: apaga dados)
+docker-compose down -v
+
+# Acessar banco de dados
+docker-compose exec db psql -U postgres -d gestao_img
+```
+
+## 📈 Performance
+
+- **Latência**: < 100ms (webhook → exibição)
+- **Concorrência**: Suporte a múltiplos CPFs simultâneos
+- **Escalabilidade**: Fácil adição de novas visualizações
+- **Confiabilidade**: Reconexão automática WebSocket
+
+## 🔒 Segurança
+
+- Validação de CPF (11 dígitos)
+- Sanitização de uploads de imagem
+- Logs de auditoria
+- Isolamento de rede Docker
+
+## 📝 Licença
+
+Este projeto é de uso livre para fins educacionais e comerciais.
