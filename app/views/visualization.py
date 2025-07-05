@@ -13,6 +13,9 @@ def create_visualization_page(visualization_name: str, port: int):
     <html>
     <head>
         <title>{visualization_name.title()}</title>
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta http-equiv="Pragma" content="no-cache">
+        <meta http-equiv="Expires" content="0">
         <style>
             body {{
                 margin: 0;
@@ -66,18 +69,6 @@ def create_visualization_page(visualization_name: str, port: int):
                 font-size: 24px;
                 text-align: center;
             }}
-            .cpf-display {{
-                position: fixed;
-                bottom: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: rgba(0,0,0,0.8);
-                color: white;
-                padding: 15px 30px;
-                border-radius: 25px;
-                font-size: 18px;
-                font-weight: bold;
-            }}
             .timer {{
                 position: fixed;
                 bottom: 20px;
@@ -94,7 +85,8 @@ def create_visualization_page(visualization_name: str, port: int):
         <div class="info">
             <strong>{visualization_name.title()}</strong><br>
             Porta: {port}<br>
-            WebSocket: ws://localhost:8000/websocket/{visualization_name}
+            WebSocket: ws://localhost:8000/websocket/{visualization_name}<br>
+            <small>Versão: 2.0 (CPF removido)</small>
         </div>
         
         <div class="status" id="status">
@@ -107,19 +99,22 @@ def create_visualization_page(visualization_name: str, port: int):
             </div>
         </div>
         
-        <div class="cpf-display" id="cpf-display" style="display: none;">
-            CPF: <span id="cpf-text"></span>
-        </div>
-        
         <div class="timer" id="timer" style="display: none;">
             <span id="timer-text">10</span>s
         </div>
         
         <script>
+            // Forçar recarregamento se for versão antiga
+            if (localStorage.getItem('visualization_version') !== '2.0') {{
+                localStorage.setItem('visualization_version', '2.0');
+                location.reload(true);
+            }}
+            
             let ws = null;
             let currentImage = null;
             let timerInterval = null;
             let timeLeft = 10;
+            let lastImageData = null;
             
             function connectWebSocket() {{
                 const wsUrl = `ws://${{window.location.hostname}}:8000/websocket/{visualization_name}`;
@@ -151,13 +146,15 @@ def create_visualization_page(visualization_name: str, port: int):
             
             function displayImage(data) {{
                 const container = document.getElementById('container');
-                const cpfDisplay = document.getElementById('cpf-display');
                 const timer = document.getElementById('timer');
                 
                 // Limpar timer anterior
                 if (timerInterval) {{
                     clearInterval(timerInterval);
                 }}
+                
+                // Salvar dados da imagem atual
+                lastImageData = data;
                 
                 // Criar elemento de imagem
                 const imageContainer = document.createElement('div');
@@ -173,42 +170,33 @@ def create_visualization_page(visualization_name: str, port: int):
                 container.innerHTML = '';
                 container.appendChild(imageContainer);
                 
-                // Mostrar CPF
-                document.getElementById('cpf-text').textContent = data.cpf;
-                cpfDisplay.style.display = 'block';
-                
-                // Iniciar timer
-                timeLeft = 10;
-                timer.style.display = 'block';
-                document.getElementById('timer-text').textContent = timeLeft;
-                
-                timerInterval = setInterval(function() {{
-                    timeLeft--;
+                // Verificar se é um novo evento ou manter imagem
+                if (data.tipo === 'novo_evento') {{
+                    // Iniciar timer apenas para novos eventos
+                    timeLeft = 10;
+                    timer.style.display = 'block';
                     document.getElementById('timer-text').textContent = timeLeft;
                     
-                    if (timeLeft <= 0) {{
-                        clearInterval(timerInterval);
-                        // Remover imagem após 10 segundos
-                        setTimeout(function() {{
-                            container.innerHTML = '<div class="loading">Aguardando próxima imagem...</div>';
-                            cpfDisplay.style.display = 'none';
+                    timerInterval = setInterval(function() {{
+                        timeLeft--;
+                        document.getElementById('timer-text').textContent = timeLeft;
+                        
+                        if (timeLeft <= 0) {{
+                            clearInterval(timerInterval);
                             timer.style.display = 'none';
-                        }}, 1000);
-                    }}
-                }}, 1000);
+                            // Não remover a imagem, apenas esconder o timer
+                        }}
+                    }}, 1000);
+                }} else {{
+                    // Para manter imagem, não mostrar timer
+                    timer.style.display = 'none';
+                }}
                 
-                console.log(`Imagem exibida: CPF ${{data.cpf}}`);
+                console.log(`Imagem exibida: ${{data.tipo === 'novo_evento' ? 'Novo evento' : 'Mantendo imagem'}}`);
             }}
             
-            // Conectar WebSocket quando a página carregar
+            // Iniciar conexão WebSocket
             connectWebSocket();
-            
-            // Reconectar se a página ficar visível novamente
-            document.addEventListener('visibilitychange', function() {{
-                if (!document.hidden && (!ws || ws.readyState !== WebSocket.OPEN)) {{
-                    connectWebSocket();
-                }}
-            }});
         </script>
     </body>
     </html>

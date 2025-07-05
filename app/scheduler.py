@@ -152,14 +152,28 @@ class EventScheduler:
                     "tipo": "manter_imagem"
                 }
                 
-                # Enviar via WebSocket apenas se não foi enviado recentemente
+                # Enviar via WebSocket apenas se não foi enviado recentemente (a cada 30 segundos)
                 event_key = f"{visualization}_keep_{ultimo_evento.id}"
+                current_time = datetime.now()
+                
+                # Verificar se já enviamos esta imagem recentemente
                 if event_key not in self.processed_events:
                     await manager.send_personal_message(
                         json.dumps(ws_message), 
                         visualization
                     )
-                    self.processed_events[event_key] = ultimo_evento.id
+                    self.processed_events[event_key] = current_time.timestamp()
+                    logger.info(f"Última imagem mantida: {visualization} - CPF: {ultimo_evento.cpf}")
+                else:
+                    # Verificar se passou mais de 30 segundos desde o último envio
+                    last_sent_time = self.processed_events[event_key]
+                    if current_time.timestamp() - last_sent_time > 30:
+                        await manager.send_personal_message(
+                            json.dumps(ws_message), 
+                            visualization
+                        )
+                        self.processed_events[event_key] = current_time.timestamp()
+                        logger.info(f"Última imagem reenviada: {visualization} - CPF: {ultimo_evento.cpf}")
                 
         except Exception as e:
             logger.error(f"Erro ao manter última imagem para {visualization}: {str(e)}")
