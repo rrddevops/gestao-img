@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
-from sqlalchemy import create_engine, Column, String, LargeBinary, DateTime, Time, Integer
+from sqlalchemy import create_engine, Column, String, LargeBinary, DateTime, Time, Integer, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import io
@@ -13,6 +13,8 @@ import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 import pytz
+import asyncio
+from websocket_client import start_websocket_client, get_websocket_client
 
 app = Flask(__name__)
 CORS(app)  # Habilita CORS para todas as rotas
@@ -54,48 +56,163 @@ class ScheduleEntry(Base):
     display_datetime = Column(DateTime(timezone=True), nullable=False)  # Data e hora completa da exibição
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(TIMEZONE))
 
+class VisualizationConfig(Base):
+    __tablename__ = 'visualization_config'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    visualization_name = Column(String, nullable=False, unique=True)  # visualization1, visualization2, etc.
+    port = Column(Integer, nullable=False)  # Porta externa (8083, 8084, etc.)
+    delay_seconds = Column(Integer, nullable=False)  # Delay em segundos
+    display_seconds = Column(Integer, nullable=False)  # Tempo de exibição em segundos
+    is_active = Column(Boolean, default=True)  # Se a visualização está ativa
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(TIMEZONE))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(TIMEZONE), onupdate=lambda: datetime.now(TIMEZONE))
+
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
-def load_visualization_config():
-    """Carrega configuração das visualizações do arquivo JSON"""
-    config_file = 'visualization_config.json'
+def initialize_visualization_config():
+    """Inicializa a configuração das visualizações no banco de dados se não existir nenhuma"""
+    session = Session()
     try:
-        with open(config_file, 'r') as f:
-            config = json.load(f)
-        print(f"Configuração carregada de {config_file}")
-        return config
-    except FileNotFoundError:
-        print(f"Arquivo {config_file} não encontrado. Usando configuração padrão.")
-        # Configuração padrão (compatibilidade)
-        return {
-            "visualizations": [
-                {"name": "visualization1", "port": 8083, "delay_seconds": 0, "display_seconds": 10},
-                {"name": "visualization2", "port": 8084, "delay_seconds": 10, "display_seconds": 10},
-                {"name": "visualization3", "port": 8085, "delay_seconds": 20, "display_seconds": 10},
-                {"name": "visualization4", "port": 8086, "delay_seconds": 30, "display_seconds": 10},
-                {"name": "visualization5", "port": 8087, "delay_seconds": 40, "display_seconds": 10},
-                {"name": "visualization6", "port": 8088, "delay_seconds": 50, "display_seconds": 10}
-            ]
+        # Só inicializa se não houver nenhuma configuração
+        existing_config = session.query(VisualizationConfig).first()
+        if existing_config:
+            print("Configuração das visualizações já existe no banco de dados")
+            return
+        # Inicializa com padrão apenas se o banco estiver vazio
+        print("Inicializando configurações padrão das visualizações no banco de dados...")
+        default_config = [
+            {"name": "visualization1", "port": 8083, "delay_seconds": 30, "display_seconds": 10},
+            {"name": "visualization2", "port": 8084, "delay_seconds": 40, "display_seconds": 10},
+            {"name": "visualization3", "port": 8085, "delay_seconds": 50, "display_seconds": 10},
+            {"name": "visualization4", "port": 8086, "delay_seconds": 60, "display_seconds": 10},
+            {"name": "visualization5", "port": 8087, "delay_seconds": 70, "display_seconds": 10},
+            {"name": "visualization6", "port": 8088, "delay_seconds": 80, "display_seconds": 10}
+        ]
+        for config in default_config:
+            viz_config = VisualizationConfig(
+                visualization_name=config["name"],
+                port=config["port"],
+                delay_seconds=config["delay_seconds"],
+                display_seconds=config["display_seconds"]
+            )
+            session.add(viz_config)
+        session.commit()
+        print("Configuração das visualizações inicializada no banco de dados")
+    except Exception as e:
+        print(f"Erro ao inicializar configuração: {e}")
+        session.rollback()
+    finally:
+        session.close()
+
+def get_visualization_config():
+    """Carrega configuração das visualizações do banco de dados"""
+    session = Session()
+    try:
+        configs = session.query(VisualizationConfig).filter_by(is_active=True).all()
+        config_dict = {}
+        for config in configs:
+            config_dict[config.visualization_name] = {
+                'port': config.port,
+                'delay_seconds': config.delay_seconds,
+                'display_seconds': config.display_seconds
+            }
+        return config_dict
+    except Exception as e:
+        print(f"Erro ao carregar configuração: {e}")
+        return {}
+    finally:
+        session.close()
+
+# Inicializa configuração no banco
+initialize_visualization_config()
+
+def sync_visualization_configs():
+    """Sincroniza as configurações de todas as visualizações no banco de dados"""
+    session = Session()
+    try:
+        # Mapeia todas as visualizações possíveis
+        all_visualizations = {
+            '30': {'name': 'visualization1', 'port': 8083},
+            '40': {'name': 'visualization2', 'port': 8084},
+            '50': {'name': 'visualization3', 'port': 8085},
+            '60': {'name': 'visualization4', 'port': 8086},
+            '70': {'name': 'visualization5', 'port': 8087},
+            '80': {'name': 'visualization6', 'port': 8088}
         }
+        
+        # Verifica e cria configurações faltantes
+        for delay, config in all_visualizations.items():
+            existing = session.query(VisualizationConfig).filter_by(
+                visualization_name=config['name']
+            ).first()
+            
+            if not existing:
+                viz_config = VisualizationConfig(
+                    visualization_name=config['name'],
+                    port=config['port'],
+                    delay_seconds=int(delay),
+                    display_seconds=10
+                )
+                session.add(viz_config)
+                print(f"Configuração criada para {config['name']} (DELAY={delay})")
+        
+        session.commit()
+        print("Sincronização de configurações concluída")
+        
+    except Exception as e:
+        print(f"Erro ao sincronizar configurações: {e}")
+        session.rollback()
+    finally:
+        session.close()
 
-# Carrega configuração das visualizações
-VISUALIZATION_CONFIG = {}
-config_data = load_visualization_config()
-for viz in config_data["visualizations"]:
-    VISUALIZATION_CONFIG[viz["name"]] = {
-        'port': viz["port"],
-        'delay_seconds': viz["delay_seconds"],
-        'display_seconds': viz["display_seconds"]
-    }
-
-
+# Sincroniza configurações (garante que todas as visualizações existam no banco)
+sync_visualization_configs()
 
 # Estado global
-current_images = {viz: None for viz in VISUALIZATION_CONFIG.keys()}
+current_images = {}
 image_display_timers = {}  # Para controlar tempo de exibição
 scheduler = BackgroundScheduler(timezone=str(TIMEZONE))
 scheduler.start()
+
+# Função callback para WebSocket
+async def websocket_image_display_callback(cpf: str, display_time_str: str = None):
+    """Callback chamado quando recebe comando via WebSocket para exibir imagem"""
+    try:
+        # Identifica a visualização atual
+        visualization_name = get_current_visualization_name()
+        
+        # Exibe a imagem imediatamente
+        display_image(cpf, visualization_name)
+        
+        # Envia confirmação
+        client = get_websocket_client()
+        if client:
+            await client.send_image_displayed(cpf)
+            
+        print(f"Imagem do CPF {cpf} exibida via WebSocket em {visualization_name}")
+        
+    except Exception as e:
+        print(f"Erro exibindo imagem via WebSocket: {e}")
+        client = get_websocket_client()
+        if client:
+            await client.send_error(f"Erro exibindo imagem: {e}")
+
+def get_current_visualization_name():
+    """Identifica o nome da visualização atual baseado na porta externa"""
+    # Mapeia porta externa para nome da visualização
+    port_to_name = {
+        8083: 'visualization1',
+        8084: 'visualization2', 
+        8085: 'visualization3',
+        8086: 'visualization4',
+        8087: 'visualization5',
+        8088: 'visualization6'
+    }
+    
+    # Obtém porta externa do ambiente
+    external_port = int(os.getenv('EXTERNAL_PORT', '8083'))
+    return port_to_name.get(external_port, 'visualization1')
 
 def get_brasilia_now():
     """Retorna o horário atual de Brasília"""
@@ -177,7 +294,10 @@ def schedule_image_display(cpf, entry_time_str, wait_time_str):
     """Agenda a exibição de uma imagem para todas as visualizações em sequência"""
     try:
         print(f"DEBUG: Iniciando agendamento para CPF {cpf}")
-        print(f"DEBUG: VISUALIZATION_CONFIG: {VISUALIZATION_CONFIG}")
+        
+        # Carrega configuração atual do banco
+        viz_config = get_visualization_config()
+        print(f"DEBUG: Configuração carregada: {viz_config}")
         
         # Calcula horário da primeira exibição
         first_display_time = calculate_display_time(entry_time_str, wait_time_str)
@@ -197,22 +317,27 @@ def schedule_image_display(cpf, entry_time_str, wait_time_str):
         
         print(f"DEBUG: Primeira exibição calculada para {first_display_datetime}")
         
-        # Agenda para todas as visualizações em sequência (SEM FILTRO)
+        # Agenda para todas as visualizações em sequência
         session = Session()
         try:
             # Ordena as visualizações pelo número para garantir sequência correta
-            sorted_visualizations = sorted(VISUALIZATION_CONFIG.items(), 
+            sorted_visualizations = sorted(viz_config.items(), 
                                          key=lambda x: int(x[0].replace('visualization', '')))
             
             print(f"DEBUG: Visualizações ordenadas: {[viz[0] for viz in sorted_visualizations]}")
             
             for viz_name, config in sorted_visualizations:
-                print(f"DEBUG: Agendando para {viz_name} (NÃO filtrar por DELAY/nome)")
+                print(f"DEBUG: Agendando para {viz_name}")
                 # Calcula horário de exibição para esta visualização
-                # O first_display_datetime já inclui o wait_time (30s), então só adiciona o delta
-                delta_seconds = config['delay_seconds'] - 30  # Remove o delay da primeira visualização
+                # O first_display_datetime já inclui o wait_time, então só adiciona o delta
+                first_delay = sorted_visualizations[0][1]['delay_seconds']  # Delay da primeira visualização
+                delta_seconds = config['delay_seconds'] - first_delay
                 display_datetime = first_display_datetime + timedelta(seconds=delta_seconds)
                 display_time = display_datetime.time()
+                
+                # Calcula o wait_time específico para esta visualização
+                wait_time_seconds = config['delay_seconds']
+                wait_time_brasilia = seconds_to_time(wait_time_seconds)
                 
                 # Cria job único para esta exibição com ID baseado na ordem de visualização
                 viz_number = viz_name.replace('visualization', '')
@@ -231,7 +356,7 @@ def schedule_image_display(cpf, entry_time_str, wait_time_str):
                     cpf=cpf,
                     visualization_name=viz_name,
                     entry_time=entry_time_brasilia,
-                    wait_time=wait_time_brasilia,
+                    wait_time=wait_time_brasilia,  # Usa o wait_time específico desta visualização
                     display_time=display_time,
                     display_datetime=display_datetime,
                     created_at=get_brasilia_now()
@@ -287,8 +412,11 @@ def display_image(cpf, visualization_name):
             print(f"SUCCESS: Exibindo {cpf} em {visualization_name}")
             print(f"DEBUG: current_images[{visualization_name}] = {current_images[visualization_name]}")
             
+            # Carrega configuração para obter display_seconds
+            viz_config = get_visualization_config()
+            display_seconds = viz_config.get(visualization_name, {}).get('display_seconds', 10)
+            
             # Agenda remoção da imagem após o tempo de exibição configurado
-            display_seconds = VISUALIZATION_CONFIG[visualization_name]['display_seconds']
             if display_seconds > 0:
                 # Cancela timer anterior se existir
                 timer_key = f"{visualization_name}_{cpf}"
@@ -334,21 +462,27 @@ def view():
 
 @app.route('/current-image')
 def get_current_image():
-    # Identifica qual visualização está sendo acessada
-    # Por simplicidade, vamos usar o DELAY environment variable
-    delay = int(os.getenv('DELAY', 0))
+    # Identifica qual visualização está sendo acessada baseado na porta externa
+    # Usa a porta externa que está sendo acessada
+    request_port = request.environ.get('HTTP_HOST', '').split(':')[-1] if ':' in request.environ.get('HTTP_HOST', '') else '8083'
     
-    # Mapeia delay para nome da visualização
+    # Mapeia porta para nome da visualização
     viz_name = None
-    for name, config in VISUALIZATION_CONFIG.items():
-        if config['delay_seconds'] == delay:
+    viz_config = get_visualization_config()
+    
+    print(f"DEBUG: HTTP_HOST={request.environ.get('HTTP_HOST', 'N/A')}")
+    print(f"DEBUG: request_port extraído={request_port}")
+    print(f"DEBUG: viz_config={viz_config}")
+    
+    for name, config in viz_config.items():
+        if str(config['port']) == request_port:
             viz_name = name
             break
     
-    print(f"DEBUG: /current-image chamado - DELAY={delay}, viz_name={viz_name}")
+    print(f"DEBUG: /current-image chamado - porta={request_port}, viz_name={viz_name}")
     print(f"DEBUG: current_images = {current_images}")
     
-    if viz_name and current_images[viz_name]:
+    if viz_name and current_images.get(viz_name):
         image_url = f'/image/{current_images[viz_name]}'
         print(f"DEBUG: Retornando imagem: {image_url}")
         return jsonify({'image_url': image_url})
@@ -363,12 +497,6 @@ def schedule_display():
     print("DEBUG: FUNÇÃO SCHEDULE_DISPLAY CHAMADA!")
     print(f"DEBUG: Recebido POST /schedule com dados: {request.json}")
     print("=" * 50)
-    
-    # Log adicional para debug
-    import sys
-    print(f"DEBUG: Python version: {sys.version}")
-    print(f"DEBUG: Current working directory: {os.getcwd()}")
-    print(f"DEBUG: Files in current directory: {os.listdir('.')}")
     
     data = request.json
     cpf = data.get('cpf')
@@ -399,8 +527,7 @@ def schedule_display():
         
         print(f"DEBUG: Imagem encontrada, chamando schedule_image_display")
         
-        # Não cria mais registro aqui!
-        # Apenas agenda a exibição para todas as visualizações
+        # Agenda a exibição
         if schedule_image_display(cpf, entry_time, wait_time):
             print(f"DEBUG: Agendamento bem-sucedido")
             
@@ -547,12 +674,25 @@ def force_reload_schedules():
 @app.route('/queue-status')
 def queue_status():
     """Mostra a fila real de agendamentos no banco para este visualizador"""
-    delay = int(os.getenv('DELAY', 0))
+    # Identifica qual visualização este container representa baseado no nome do container
+    container_name = os.getenv('HOSTNAME', '')
+    
     viz_name = None
-    for name, config in VISUALIZATION_CONFIG.items():
-        if config['delay_seconds'] == delay:
-            viz_name = name
-            break
+    viz_config = get_visualization_config()
+    
+    # Mapeia nome do container para visualização
+    if 'visualization1' in container_name:
+        viz_name = 'visualization1'
+    elif 'visualization2' in container_name:
+        viz_name = 'visualization2'
+    elif 'visualization3' in container_name:
+        viz_name = 'visualization3'
+    elif 'visualization4' in container_name:
+        viz_name = 'visualization4'
+    elif 'visualization5' in container_name:
+        viz_name = 'visualization5'
+    elif 'visualization6' in container_name:
+        viz_name = 'visualization6'
 
     current_cpf = current_images.get(viz_name) if viz_name else None
 
@@ -561,7 +701,7 @@ def queue_status():
     active_jobs = scheduler.get_jobs()
     queue_count = 0
     
-    print(f"DEBUG: Verificando jobs para {viz_name} (delay={delay})")
+    print(f"DEBUG: Verificando jobs para {viz_name} (container={container_name})")
     print(f"DEBUG: Total de jobs ativos: {len(active_jobs)}")
     
     for job in active_jobs:
@@ -617,53 +757,169 @@ def schedule_details():
     finally:
         session.close()
 
-def reload_schedules_from_database():
-    """Recarrega agendamentos do banco de dados apenas para esta visualização"""
+@app.route('/config')
+def get_config():
+    """Retorna a configuração atual das visualizações"""
     try:
-        # Limpa todos os jobs existentes antes de recarregar
-        scheduler.remove_all_jobs()
-        print("Jobs existentes removidos.")
-        
-        # Identifica qual visualização este container representa
-        delay = int(os.getenv('DELAY', 0))
-        current_viz_name = None
-        for name, config in VISUALIZATION_CONFIG.items():
-            if config['delay_seconds'] == delay:
-                current_viz_name = name
-                break
-        
-        if not current_viz_name:
-            print(f"ERRO: Não foi possível identificar a visualização para DELAY={delay}")
-            return
-        
-        print(f"DEBUG: Este container representa a visualização: {current_viz_name}")
-        
+        config = get_visualization_config()
+        return jsonify({
+            'visualization_config': config,
+            'total_visualizations': len(config)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/config', methods=['POST'])
+def update_config():
+    """Atualiza a configuração das visualizações"""
+    try:
+        data = request.json
         session = Session()
-        # Filtra apenas os registros desta visualização específica
-        entries = session.query(ScheduleEntry).filter_by(visualization_name=current_viz_name).all()
+        
+        for viz_name, config in data.items():
+            viz_config = session.query(VisualizationConfig).filter_by(visualization_name=viz_name).first()
+            if viz_config:
+                viz_config.delay_seconds = config.get('delay_seconds', viz_config.delay_seconds)
+                viz_config.display_seconds = config.get('display_seconds', viz_config.display_seconds)
+                viz_config.port = config.get('port', viz_config.port)
+                viz_config.is_active = config.get('is_active', viz_config.is_active)
+                viz_config.updated_at = datetime.now(TIMEZONE)
+        
+        session.commit()
+        return jsonify({'message': 'Configuração atualizada com sucesso'}), 200
+        
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
         session.close()
-        
-        print(f"Recarregando {len(entries)} agendamentos para {current_viz_name} do banco de dados...")
-        
-        for entry in entries:
-            # Cria job único para esta exibição baseado no registro existente
-            job_id = entry.id
+
+@app.route('/config/all', methods=['GET'])
+def get_all_configs():
+    """Retorna todas as configurações detalhadas do banco de dados"""
+    session = Session()
+    try:
+        configs = session.query(VisualizationConfig).all()
+        result = []
+        for config in configs:
+            result.append({
+                'id': config.id,
+                'visualization_name': config.visualization_name,
+                'port': config.port,
+                'delay_seconds': config.delay_seconds,
+                'display_seconds': config.display_seconds,
+                'is_active': config.is_active,
+                'created_at': config.created_at.isoformat() if config.created_at else None,
+                'updated_at': config.updated_at.isoformat() if config.updated_at else None
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/config/reset', methods=['POST'])
+def reset_configs():
+    """Reseta todas as configurações para os valores padrão"""
+    try:
+        session = Session()
+        try:
+            # Remove todas as configurações existentes
+            session.query(VisualizationConfig).delete()
             
-            # Agenda o job no scheduler (não cria novo registro no banco)
+            # Recria com valores padrão
+            all_visualizations = {
+                '30': {'name': 'visualization1', 'port': 8083},
+                '40': {'name': 'visualization2', 'port': 8084},
+                '50': {'name': 'visualization3', 'port': 8085},
+                '60': {'name': 'visualization4', 'port': 8086},
+                '70': {'name': 'visualization5', 'port': 8087},
+                '80': {'name': 'visualization6', 'port': 8088}
+            }
+            
+            for delay, config in all_visualizations.items():
+                viz_config = VisualizationConfig(
+                    visualization_name=config['name'],
+                    port=config['port'],
+                    delay_seconds=int(delay),
+                    display_seconds=10
+                )
+                session.add(viz_config)
+            
+            session.commit()
+            
+            # Recarrega agendamentos
+            reload_schedules_from_database()
+            
+            return jsonify({"message": "Configurações resetadas com sucesso"})
+            
+        finally:
+            session.close()
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def reload_schedules_from_database():
+    """Recarrega agendamentos do banco de dados para esta visualização"""
+    try:
+        print("DEBUG: Iniciando reload_schedules_from_database()")
+        scheduler.remove_all_jobs()
+        print("DEBUG: Jobs existentes removidos.")
+
+        # Identifica a porta externa deste container
+        import socket
+        import requests
+        import os
+
+        # Tenta obter a porta externa a partir do mapeamento do host
+        # Usa a variável HTTP_HOST se disponível (em request), senão tenta obter do ambiente
+        port = None
+        if 'HTTP_HOST' in os.environ:
+            # Exemplo: 'localhost:8083'
+            host = os.environ['HTTP_HOST']
+            if ':' in host:
+                port = int(host.split(':')[-1])
+        else:
+            # Tenta obter a porta do mapeamento do docker-compose
+            # Busca a porta do arquivo de configuração do banco
+            # Como fallback, tenta usar a porta padrão 8083
+            port = int(os.getenv('PORT', '8083'))
+
+        print(f"DEBUG: Porta identificada: {port}")
+
+        # Busca o nome da visualização correspondente à porta no banco
+        session = Session()
+        viz_config = session.query(VisualizationConfig).filter_by(port=port).first()
+        if not viz_config:
+            print(f"ERRO: Não foi possível identificar a visualização para porta={port}")
+            session.close()
+            return
+        viz_name = viz_config.visualization_name
+        print(f"DEBUG: viz_name identificado: {viz_name}")
+
+        # Filtra apenas os registros desta visualização específica
+        entries = session.query(ScheduleEntry).filter_by(visualization_name=viz_name).all()
+        session.close()
+
+        print(f"DEBUG: Encontrados {len(entries)} agendamentos para {viz_name} no banco de dados...")
+
+        for entry in entries:
+            print(f"DEBUG: Processando entry: {entry.id} - {entry.cpf} - {entry.visualization_name} - {entry.display_datetime}")
+            job_id = entry.id
             scheduler.add_job(
                 func=display_image,
-                trigger=DateTrigger(run_date=entry.display_datetime),
+                trigger='date',
+                run_date=entry.display_datetime,
                 args=[entry.cpf, entry.visualization_name],
                 id=job_id,
                 replace_existing=True
             )
-            
-            print(f"Recarregado: {entry.cpf} em {entry.visualization_name} às {entry.display_datetime.strftime('%H:%M:%S')}")
-            
-        print(f"Recarregamento concluído para {current_viz_name}. Total de jobs: {len(scheduler.get_jobs())}")
-        
+            print(f"DEBUG: Job adicionado ao scheduler: {job_id}")
+
+        print(f"DEBUG: Recarregamento concluído para {viz_name}. Total de jobs: {len(scheduler.get_jobs())}")
+
     except Exception as e:
-        print(f"Erro ao recarregar agendamentos: {e}")
+        print(f"ERROR: Erro ao recarregar agendamentos: {e}")
         import traceback
         traceback.print_exc()
 
@@ -711,10 +967,19 @@ reload_schedules_from_database()
 execute_pending_jobs()
 
 if __name__ == '__main__':
+    # Inicia o cliente WebSocket em uma thread separada
+    def start_websocket():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(start_websocket_client(websocket_image_display_callback))
+    
+    websocket_thread = threading.Thread(target=start_websocket, daemon=True)
+    websocket_thread.start()
+    
     # Debug: Mostra configuração e rotas
     print("=" * 50)
     print("DEBUG: INICIALIZAÇÃO DO APP")
-    print(f"DEBUG: VISUALIZATION_CONFIG carregado: {VISUALIZATION_CONFIG}")
+    print(f"DEBUG: Configuração carregada: {get_visualization_config()}")
     print(f"DEBUG: Rotas registradas:")
     for rule in app.url_map.iter_rules():
         print(f"  {rule.rule} -> {rule.endpoint}")

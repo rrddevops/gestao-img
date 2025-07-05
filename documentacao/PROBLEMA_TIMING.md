@@ -106,6 +106,25 @@ delta_seconds = config['delay_seconds'] - 30  # Remove o delay da primeira visua
 display_datetime = first_display_datetime + timedelta(seconds=delta_seconds)
 ```
 
+### 6. Correção do Wait_Time por Visualização
+
+**Problema**: Todas as visualizações estavam usando o mesmo `wait_time` (30s) em vez de seus delays específicos.
+
+**Correção**:
+```python
+# Calcula o wait_time específico para esta visualização
+wait_time_seconds = config['delay_seconds']
+wait_time_brasilia = seconds_to_time(wait_time_seconds)
+```
+
+**Resultado esperado no banco**:
+- visualization1: wait_time = 00:00:30 (30s)
+- visualization2: wait_time = 00:00:40 (40s)
+- visualization3: wait_time = 00:00:50 (50s)
+- visualization4: wait_time = 00:01:00 (60s)
+- visualization5: wait_time = 00:01:10 (70s)
+- visualization6: wait_time = 00:01:20 (80s)
+
 ## Como Funciona Agora
 
 ### Sequência de Exibição

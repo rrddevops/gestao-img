@@ -47,6 +47,17 @@ services:
       - POSTGRES_HOST=postgres
     depends_on:
       - postgres
+      - websocket-server
+    networks:
+      - app-network
+
+  websocket-server:
+    build: .
+    ports:
+      - "8765:8765"
+    volumes:
+      - .:/app
+    command: python websocket_server.py
     networks:
       - app-network
 
@@ -55,14 +66,17 @@ services:
     ports:
       - "8083:5003"
     environment:
-      - DELAY=30
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_HOST=postgres
+      - DELAY=30
+      - EXTERNAL_PORT=8083
     depends_on:
       postgres:
         condition: service_healthy
+      websocket-server:
+        condition: service_started
     networks:
       - app-network
 
@@ -71,14 +85,17 @@ services:
     ports:
       - "8084:5003"
     environment:
-      - DELAY=40
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_HOST=postgres
+      - DELAY=40
+      - EXTERNAL_PORT=8084
     depends_on:
       postgres:
         condition: service_healthy
+      websocket-server:
+        condition: service_started
     networks:
       - app-network
 
@@ -87,14 +104,17 @@ services:
     ports:
       - "8085:5003"
     environment:
-      - DELAY=50
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_HOST=postgres
+      - DELAY=50
+      - EXTERNAL_PORT=8085
     depends_on:
       postgres:
         condition: service_healthy
+      websocket-server:
+        condition: service_started
     networks:
       - app-network
 
@@ -103,14 +123,17 @@ services:
     ports:
       - "8086:5003"
     environment:
-      - DELAY=60
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_HOST=postgres
+      - DELAY=60
+      - EXTERNAL_PORT=8086
     depends_on:
       postgres:
         condition: service_healthy
+      websocket-server:
+        condition: service_started
     networks:
       - app-network
 
@@ -119,14 +142,17 @@ services:
     ports:
       - "8087:5003"
     environment:
-      - DELAY=70
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_HOST=postgres
+      - DELAY=70
+      - EXTERNAL_PORT=8087
     depends_on:
       postgres:
         condition: service_healthy
+      websocket-server:
+        condition: service_started
     networks:
       - app-network
 
@@ -135,14 +161,17 @@ services:
     ports:
       - "8088:5003"
     environment:
-      - DELAY=80
       - POSTGRES_DB=gestao_img
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_HOST=postgres
+      - DELAY=80
+      - EXTERNAL_PORT=8088
     depends_on:
       postgres:
         condition: service_healthy
+      websocket-server:
+        condition: service_started
     networks:
       - app-network
 

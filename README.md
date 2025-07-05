@@ -1,34 +1,62 @@
-# Sistema de Gerenciamento de Imagens
+# Sistema de Gerenciamento de Imagens com WebSockets
 
-Este sistema é composto por três aplicações que trabalham em conjunto para gerenciar o upload, processamento e visualização de imagens associadas a CPFs.
+Este sistema é composto por aplicações que trabalham em conjunto para gerenciar o upload, processamento e visualização de imagens associadas a CPFs usando **comunicação em tempo real via WebSockets**.
 
-## 🆕 NOVO: Sistema de Agendamento Simplificado
+## 🆕 NOVO: Sistema WebSocket em Tempo Real
 
-O sistema foi completamente atualizado para usar controle de tempo baseado em **datetime** em vez de milissegundos, garantindo precisão na ordem de exibição das imagens, especialmente em filas grandes.
+O sistema foi completamente refatorado para usar **WebSockets** em vez de agendamento baseado em banco de dados, garantindo comunicação instantânea e exibição imediata das imagens.
 
 ### Principais Melhorias
-- ✅ Controle de tempo em formato HH:MM:SS
-- ✅ Agendamento preciso baseado em horário de entrada
-- ✅ Ordenação cronológica automática
-- ✅ Suporte a 6 visualizações simultâneas
-- ✅ **NOVO**: Interface simplificada - apenas CPF necessário
-- ✅ Compatibilidade com sistema anterior
+- ✅ **Comunicação em tempo real** via WebSockets
+- ✅ **Exibição instantânea** das imagens
+- ✅ **Sincronização garantida** entre visualizadores
+- ✅ **Conexões persistentes** com heartbeats
+- ✅ **Reconexão automática** em caso de falha
+- ✅ **Monitoramento em tempo real** dos servidores
+- ✅ **Eliminação de delays** de agendamento
 
-### Exemplo de Funcionamento
-Quando um CPF é enviado via webhook:
+### Arquitetura WebSocket
 ```
-Horário atual: 20:00:00
-Tempo de espera padrão: 10 segundos
-
-Visualization1: 20:00:10 (atual + 10s)
-Visualization2: 20:00:20 (+10s)
-Visualization3: 20:00:30 (+10s)
-Visualization4: 20:00:40 (+10s)
-Visualization5: 20:00:50 (+10s)
-Visualization6: 20:01:00 (+10s)
+┌─────────────────┐    WebSocket    ┌─────────────────┐
+│   Webhook       │ ──────────────► │  Servidor       │
+│   (Porta 5002)  │                 │  WebSocket      │
+└─────────────────┘                 │  (Porta 8765)   │
+                                    └─────────────────┘
+                                           │
+                                           │ Broadcast
+                                           ▼
+┌─────────────────┐    WebSocket    ┌─────────────────┐
+│ Visualization1  │ ◄────────────── │                 │
+│ (Porta 8083)    │                 │                 │
+└─────────────────┘                 │                 │
+                                    │                 │
+┌─────────────────┐    WebSocket    │                 │
+│ Visualization2  │ ◄────────────── │                 │
+│ (Porta 8084)    │                 │                 │
+└─────────────────┘                 │                 │
+                                    │                 │
+┌─────────────────┐    WebSocket    │                 │
+│ Visualization3  │ ◄────────────── │                 │
+│ (Porta 8085)    │                 │                 │
+└─────────────────┘                 │                 │
+                                    │                 │
+┌─────────────────┐    WebSocket    │                 │
+│ Visualization4  │ ◄────────────── │                 │
+│ (Porta 8086)    │                 │                 │
+└─────────────────┘                 │                 │
+                                    │                 │
+┌─────────────────┐    WebSocket    │                 │
+│ Visualization5  │ ◄────────────── │                 │
+│ (Porta 8087)    │                 │                 │
+└─────────────────┘                 │                 │
+                                    │                 │
+┌─────────────────┐    WebSocket    │                 │
+│ Visualization6  │ ◄────────────── │                 │
+│ (Porta 8088)    │                 │                 │
+└─────────────────┘                 └─────────────────┘
 ```
 
-**📖 Para mais detalhes, consulte [README_SCHEDULER.md](README_SCHEDULER.md)**
+**📖 Para mais detalhes, consulte [README_WEBSOCKET.md](README_WEBSOCKET.md)**
 
 ## Estrutura do Sistema
 
@@ -39,24 +67,28 @@ Visualization6: 20:01:00 (+10s)
 
 ### App 2 - Webhook (Porta 5002)
 - Recebe notificações via webhook
-- Encaminha solicitações para as aplicações de visualização
-- **NOVO**: Interface simplificada - apenas CPF necessário
-- **NOVO**: Gerenciamento automático de horários
+- **NOVO**: Envia comandos via WebSocket para exibição instantânea
+- **NOVO**: Comunicação em tempo real
 - Endpoints:
-  - POST /webhook (sistema legado)
-  - POST /schedule (novo sistema simplificado)
+  - POST /webhook (sistema WebSocket)
+  - POST /schedule (sistema WebSocket)
   - GET /schedule-status
 
+### Servidor WebSocket Central (Porta 8765)
+- **NOVO**: Gerencia conexões de todos os servidores de visualização
+- **NOVO**: Distribui comandos de exibição em tempo real
+- **NOVO**: Monitora status dos clientes conectados
+- **NOVO**: Suporte a heartbeats e reconexão automática
+
 ### App 3 - Visualização (Portas 8083-8088)
-- Gerencia a exibição temporizada das imagens
-- **NOVO**: 6 instâncias com agendamento preciso
-- **NOVO**: Sistema de agendamento baseado em APScheduler
+- **NOVO**: 6 instâncias com conexão WebSocket
+- **NOVO**: Exibição instantânea via WebSocket
+- **NOVO**: Cliente WebSocket que se conecta ao servidor central
 - Endpoints:
-  - POST /display (sistema legado)
-  - POST /schedule (novo sistema)
-  - GET /schedule-status
-  - GET /view/
-  - GET /image/<cpf>
+  - GET /view/ (interface de visualização)
+  - GET /current-image (imagem atual)
+  - GET /image/<cpf> (imagem específica)
+  - GET /schedule-status (status do servidor)
 
 ## Configuração e Execução
 
@@ -101,53 +133,48 @@ cd app3-visualizacao && python app.py
 curl -X POST -F "image=@caminho/para/imagem.jpg" -F "cpf=12345678900" http://localhost:5001/upload
 ```
 
-### 2. Agendamento Simplificado (NOVO - RECOMENDADO)
+### 2. Exibição Instantânea via WebSocket (NOVO - RECOMENDADO)
 
-**Apenas CPF é necessário!** O sistema gerencia automaticamente os horários:
+**Exibição imediata via WebSocket!** O sistema envia comandos em tempo real:
 
 ```bash
-# Formato simplificado - apenas CPF
+# Enviar CPF para exibição instantânea
 curl -X POST -H "Content-Type: application/json" \
   -d '{"cpf": "12345678900"}' \
-  http://localhost:5002/schedule
+  http://localhost:5002/webhook
 ```
 
 **Resposta:**
 ```json
 {
-  "message": "Agendamento realizado com sucesso",
+  "message": "CPF 12345678900 enviado para exibição via WebSocket",
   "cpf": "12345678900",
   "entry_time": "20:00:00",
-  "wait_time": "00:00:10",
-  "scheduled_times": {
-    "visualization1": "20:00:10",
-    "visualization2": "20:00:20",
-    "visualization3": "20:00:30",
-    "visualization4": "20:00:40",
-    "visualization5": "20:00:50",
-    "visualization6": "20:01:00"
-  }
+  "wait_time": "00:00:30",
+  "websocket_result": {
+    "success": true,
+    "message": "Comando enviado via WebSocket"
+  },
+  "view_urls": [
+    {
+      "server": "Servidor 1",
+      "url": "http://localhost:8083/view/",
+      "websocket_result": {"success": true}
+    }
+  ]
 }
 ```
 
-### 3. Agendamento Manual (Sistema Avançado)
-
-Para controle manual de horários:
+### 3. Verificar Status dos Servidores
 
 ```bash
-curl -X POST -H "Content-Type: application/json" \
-  -d '{
-    "cpf": "12345678900",
-    "entry_time": "20:00:00",
-    "wait_time": "00:00:30"
-  }' \
-  http://localhost:5002/schedule
-```
+# Status dos agendamentos
+curl http://localhost:5002/schedule-status
 
-### 4. Solicitar Visualização via Webhook (Sistema Legado)
-
-```bash
-curl -X POST -H "Content-Type: application/json" -d '{"cpf":"12345678900"}' http://localhost:5002/webhook
+# Status de cada visualização
+curl http://localhost:8083/schedule-status
+curl http://localhost:8084/schedule-status
+# ... etc
 ```
 
 ### 5. Visualizar as Imagens
@@ -170,51 +197,105 @@ curl http://localhost:5002/schedule-status
 
 ## Scripts de Teste
 
-### Teste com Timing Correto (RECOMENDADO)
+### Teste do Sistema WebSocket (RECOMENDADO)
 ```bash
-python test_webhook_timing.py
+python teste_websocket.py
 ```
 **Características:**
-- Respeita os tempos de exibição configurados
-- Evita sobreposição de imagens
-- Delay entre agendamentos para testes em massa
-- Tempo total estimado: ~6 minutos para 24 CPFs
+- Testa conexão com servidor WebSocket
+- Verifica webhook com WebSocket
+- Testa todos os servidores de visualização
+- Mostra status completo do sistema
 
-### Teste Rápido de Timing
-```bash
-python teste_timing_rapido.py
-```
-**Características:**
-- Teste rápido com um CPF
-- Mostra horários esperados de exibição
-- Verifica status dos agendamentos
-- Ideal para validar correções
+### Teste Manual via PowerShell
+```powershell
+# Enviar webhook
+Invoke-RestMethod -Uri "http://localhost:5002/webhook" -Method POST -ContentType "application/json" -Body '{"cpf":"11111111111"}'
 
-### Teste Rápido do Webhook
-```bash
-python test_webhook.py
+# Verificar status
+Invoke-RestMethod -Uri "http://localhost:8083/schedule-status" -Method GET
 ```
 
-### Teste Simples
+### Teste Manual via curl (Linux/Mac)
 ```bash
-python teste_rapido.py
+# Enviar webhook
+curl -X POST http://localhost:5002/webhook -H 'Content-Type: application/json' -d '{"cpf":"11111111111"}'
+
+# Verificar status
+curl http://localhost:8083/schedule-status
+
+## Monitoramento e Logs
+
+### Logs dos Containers
+```bash
+# Servidor WebSocket
+docker logs gestao-img-websocket-server-1
+
+# Webhook Server
+docker logs gestao-img-app2-webhook-1
+
+# Servidores de Visualização
+docker logs gestao-img-visualization1-1
+docker logs gestao-img-visualization2-1
+# ... etc
 ```
+
+### Status dos Serviços
+```bash
+# Verificar containers rodando
+docker ps
+
+# Verificar logs em tempo real
+docker logs -f gestao-img-websocket-server-1
+```
+
+### Verificação de Conexões WebSocket
+- O servidor WebSocket mostra conexões ativas
+- Cada visualização envia heartbeats a cada 30 segundos
+- Reconexão automática em caso de falha
+- Logs detalhados de comandos enviados/recebidos
 
 ### Exemplos Detalhados
 ```bash
 python example_usage.py
 ```
 
-## Configuração das Visualizações
+## Configuração Centralizada das Visualizações
 
-| Visualização | Porta Externa | Delay (segundos) | Display (segundos) |
-|--------------|---------------|------------------|-------------------|
-| visualization1 | 8083 | 30 | 10 |
-| visualization2 | 8084 | 40 | 10 |
-| visualization3 | 8085 | 50 | 10 |
-| visualization4 | 8086 | 60 | 10 |
-| visualization5 | 8087 | 70 | 10 |
-| visualization6 | 8088 | 80 | 10 |
+A partir da versão mais recente, **todas as configurações de visualização** (delay, display_seconds, portas, etc.) são centralizadas na tabela `visualization_config` do banco de dados PostgreSQL.
+
+- **Não é mais necessário configurar variáveis de ambiente DELAY** no `docker-compose.yml`.
+- **Não é mais necessário editar arquivos JSON de configuração**.
+- Todos os parâmetros podem ser consultados e alterados via API REST ou pelo script `gerenciar_configuracoes.py`.
+
+### Como Gerenciar as Configurações
+
+- Para ver todas as configurações atuais:
+  ```bash
+  python gerenciar_configuracoes.py mostrar
+  ```
+- Para atualizar uma visualização específica:
+  ```bash
+  python gerenciar_configuracoes.py atualizar visualization1 45 15
+  # (atualiza o delay para 45s e o tempo de exibição para 15s)
+  ```
+- Para resetar todas as configurações para os valores padrão:
+  ```bash
+  python gerenciar_configuracoes.py resetar
+  ```
+
+### Endpoints Úteis
+
+- `GET /config` — retorna a configuração resumida da instância
+- `GET /config/all` — retorna todas as configurações detalhadas do banco
+- `POST /config` — atualiza parâmetros de uma visualização
+- `POST /config/reset` — reseta todas as configurações para os padrões
+
+### Observações
+
+- Ao alterar as configurações, os agendamentos são recarregados automaticamente.
+- O sistema sempre consulta o banco para saber os parâmetros de cada visualização.
+- O bloco de inicialização padrão só é usado se o banco estiver vazio (primeira execução ou reset).
 
 ## ⚠️ Problema de Timing Resolvido
 

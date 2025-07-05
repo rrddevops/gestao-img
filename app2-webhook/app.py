@@ -3,6 +3,8 @@ import requests
 import os
 import asyncio
 import aiohttp
+import websockets
+import json
 from datetime import datetime
 import pytz
 
@@ -11,7 +13,10 @@ app = Flask(__name__)
 # Configuração de timezone para Brasília
 TIMEZONE = pytz.timezone('America/Sao_Paulo')
 
-# Configuração dos servidores de visualização
+# Configuração do servidor WebSocket
+WEBSOCKET_SERVER_URL = "ws://websocket-server:8765"
+
+# Configuração dos servidores de visualização (para compatibilidade)
 VISUALIZATION_SERVERS = [
     {
         "name": "Servidor 1",
@@ -142,6 +147,34 @@ async def notify_all_servers_legacy(cpf):
         ]
         return await asyncio.gather(*tasks)
 
+async def send_image_via_websocket(cpf: str):
+    """Envia comando para exibir imagem via WebSocket"""
+    try:
+        print(f"Enviando comando via WebSocket para exibir CPF {cpf}")
+        
+        async with websockets.connect(WEBSOCKET_SERVER_URL) as websocket:
+            message = {
+                'type': 'display_image',
+                'cpf': cpf,
+                'timestamp': datetime.now(TIMEZONE).isoformat()
+            }
+            
+            await websocket.send(json.dumps(message))
+            print(f"Comando enviado via WebSocket para CPF {cpf}")
+            
+            # Aguarda confirmação (opcional)
+            try:
+                response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+                print(f"Resposta do WebSocket: {response}")
+            except asyncio.TimeoutError:
+                print("Timeout aguardando resposta do WebSocket")
+            
+            return {'success': True, 'message': 'Comando enviado via WebSocket'}
+            
+    except Exception as e:
+        print(f"Erro enviando comando via WebSocket: {e}")
+        return {'error': str(e)}
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
@@ -154,39 +187,59 @@ def webhook():
     now = get_brasilia_now()
     entry_time = now.strftime('%H:%M:%S')  # Horário atual de Brasília
     
-    # Calcula wait_time baseado no delay da primeira visualização (visualization1)
-    # O wait_time deve ser o tempo até a primeira exibição
-    first_delay_seconds = 30  # delay_seconds da visualization1
-    wait_time_seconds = first_delay_seconds
-    wait_time = f"00:00:{wait_time_seconds:02d}"
-    
-    print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time} (primeira visualização em {first_delay_seconds}s)")
+    # Obtém configuração das visualizações do banco de dados
+    try:
+        response = requests.get(f"{VISUALIZATION_SERVERS[0]['url']}/config", timeout=5)
+        if response.status_code == 200:
+            config_data = response.json()
+            viz_config = config_data.get('visualization_config', {})
+            
+            # Encontra a primeira visualização (visualization1)
+            first_viz_config = viz_config.get('visualization1')
+            
+            if first_viz_config:
+                first_delay_seconds = first_viz_config.get('delay_seconds', 30)
+                wait_time_seconds = first_delay_seconds
+                wait_time = f"00:00:{wait_time_seconds:02d}"
+                print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time} (primeira visualização em {first_delay_seconds}s)")
+            else:
+                # Fallback para configuração padrão
+                wait_time = "00:00:30"
+                print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time} (configuração padrão)")
+        else:
+            # Fallback para configuração padrão
+            wait_time = "00:00:30"
+            print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time} (erro ao obter configuração)")
+    except Exception as e:
+        # Fallback para configuração padrão
+        wait_time = "00:00:30"
+        print(f"Agendando CPF {cpf} para exibição às {entry_time} + {wait_time} (erro: {e})")
 
     # Criar um loop de eventos para chamadas assíncronas
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
     try:
-        # Notificar todos os servidores usando novo sistema de agendamento
-        results = loop.run_until_complete(notify_all_servers_schedule(cpf, entry_time, wait_time))
+        # Enviar comando via WebSocket para exibição imediata
+        result = loop.run_until_complete(send_image_via_websocket(cpf))
         
         # Preparar URLs de visualização
         view_urls = []
-        for i, server in enumerate(VISUALIZATION_SERVERS):
+        for server in VISUALIZATION_SERVERS:
             external_url = get_external_url(server['url'], server['external_port'])
             view_urls.append({
                 'server': server['name'],
                 'delay': server['delay'],
                 'url': f"{external_url}/view/",
-                'status': 'success' if 'error' not in results[i] else 'error',
-                'error': results[i].get('error') if 'error' in results[i] else None
+                'websocket_result': result
             })
         
         return jsonify({
-            'message': 'Agendamento realizado com sucesso',
+            'message': f'CPF {cpf} enviado para exibição via WebSocket',
             'cpf': cpf,
             'entry_time': entry_time,
             'wait_time': wait_time,
+            'websocket_result': result,
             'view_urls': view_urls
         }), 200
         
