@@ -7,12 +7,17 @@ from app.models import Base, Cadastro, Parametro, Evento
 from app.views import cadastro, webhook, websocket, visualization
 from app.scheduler import event_scheduler
 import os
+import logging
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Criar tabelas no banco de dados
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Sistema de Gerenciamento de Imagens",
+    title="Sistema de Gestão de Imagens",
     description="Sistema para cadastro, agendamento e exibição de imagens por CPF",
     version="1.0.0"
 )
