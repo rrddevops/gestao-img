@@ -116,8 +116,8 @@ def main():
     time.sleep(2)
     
     # Enviar primeiro webhook
-    print("\n📤 Enviando primeiro webhook (CPF: 22673617876)...")
-    sucesso, resposta = enviar_webhook("22673617876")
+    print("\n📤 Enviando primeiro webhook (CPF: 11111111111)...")
+    sucesso, resposta = enviar_webhook("11111111111")
     if sucesso:
         print(f"✅ Webhook enviado: {resposta}")
     else:

@@ -106,7 +106,7 @@ Após as correções, o sistema agora:
 ### Exemplo de Sequência Correta
 
 ```
-visualization1: 22673617876 (12:40:41 → 12:40:51)
+visualization1: 11111111111 (12:40:41 → 12:40:51)
 visualization1: 12345678901 (12:40:53 → 12:41:03) ✅ Sem sobreposição
 visualization1: 89778060037 (12:41:05 → 12:41:15) ✅ Sem sobreposição
 ```
