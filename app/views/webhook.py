@@ -83,31 +83,17 @@ async def processar_webhook(
                     Evento.visualization == visualization
                 ).order_by(Evento.hora_fim.desc()).first()
                 
+                delay_inicial = tempo_inicial + (i * incremento)
+                agora_naive = hora_atual_brasilia.replace(tzinfo=None)
+                
                 if ultimo_evento_visualization:
-                    # Se existe evento anterior nesta visualização, começar após o último terminar
-                    hora_inicio_base = ultimo_evento_visualization.hora_fim
-                    
-                    # Verificar se o último evento já terminou
-                    if hora_inicio_base <= hora_atual:
-                        # Último evento já terminou, começar imediatamente
-                        # Aplicar delay baseado nos parâmetros da tabela
-                        delay_inicial = tempo_inicial + (i * incremento)
-                        hora_inicio_dt = hora_atual_brasilia + timedelta(seconds=delay_inicial)
+                    hora_fim_ultimo = datetime.combine(agora_naive.date(), ultimo_evento_visualization.hora_fim)
+                    if hora_fim_ultimo >= agora_naive:
+                        hora_inicio_dt = hora_fim_ultimo
                     else:
-                        # Último evento ainda está ativo, começar após ele terminar
-                        # Converter para datetime com timezone de Brasília
-                        data_atual = hora_atual_brasilia.date()
-                        hora_inicio_dt = TIMEZONE_BRASILIA.localize(
-                            datetime.combine(data_atual, hora_inicio_base)
-                        )
-                        # Aplicar delay baseado nos parâmetros da tabela
-                        delay_inicial = tempo_inicial + (i * incremento)
-                        hora_inicio_dt += timedelta(seconds=delay_inicial)
+                        hora_inicio_dt = agora_naive + timedelta(seconds=delay_inicial)
                 else:
-                    # Primeiro evento desta visualização
-                    # Calcular delay baseado no índice da visualização
-                    delay_inicial = tempo_inicial + (i * incremento)
-                    hora_inicio_dt = hora_atual_brasilia + timedelta(seconds=delay_inicial)
+                    hora_inicio_dt = agora_naive + timedelta(seconds=delay_inicial)
                 
                 # Calcular horários para este evento
                 hora_exibicao_dt = hora_inicio_dt
@@ -118,7 +104,7 @@ async def processar_webhook(
                 hora_fim = hora_fim_dt.time()
                 
                 # Calcular delay (diferença entre hora atual e hora de exibição)
-                delay_timedelta = hora_exibicao_dt - hora_atual_brasilia
+                delay_timedelta = hora_exibicao_dt - agora_naive
                 
                 # Criar evento
                 evento = Evento(
