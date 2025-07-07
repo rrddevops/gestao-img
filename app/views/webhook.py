@@ -89,10 +89,19 @@ async def processar_webhook(
                 if ultimo_evento_visualization:
                     hora_fim_ultimo = datetime.combine(agora_naive.date(), ultimo_evento_visualization.hora_fim)
                     if hora_fim_ultimo >= agora_naive:
-                        hora_inicio_dt = hora_fim_ultimo
+                        # Último evento ainda está rodando - agendar após o fim dele
+                        hora_inicio_dt = hora_fim_ultimo + timedelta(seconds=delay_inicial)
                     else:
-                        hora_inicio_dt = agora_naive + timedelta(seconds=delay_inicial)
+                        # Último evento já terminou
+                        diff = (agora_naive - hora_fim_ultimo).total_seconds()
+                        if diff >= tempo_inicial:
+                            # Quando há um gap >= tempo_inicial, usar delay_inicial (que inclui o incremento)
+                            hora_inicio_dt = agora_naive + timedelta(seconds=delay_inicial)
+                        else:
+                            # Gap pequeno - continuar a sequência
+                            hora_inicio_dt = hora_fim_ultimo + timedelta(seconds=delay_inicial)
                 else:
+                    # Primeiro evento desta visualização
                     hora_inicio_dt = agora_naive + timedelta(seconds=delay_inicial)
                 
                 # Calcular horários para este evento

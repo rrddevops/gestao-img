@@ -97,11 +97,50 @@ class EventScheduler:
                     self.processed_events[event_key] = evento_ativo.id
                     logger.info(f"🆕 NOVO EVENTO: {visualization} - CPF: {evento_ativo.cpf} - Hora: {hora_atual}")
             else:
-                # Se não há evento ativo, manter última imagem cronológica
-                await self.manter_ultima_imagem_cronologica(visualization, db)
-                
+                # Buscar o próximo evento futuro
+                proximo_evento = db.query(Evento).filter(
+                    Evento.visualization == visualization,
+                    Evento.hora_exibicao > hora_atual
+                ).order_by(Evento.hora_exibicao.asc()).first()
+                if proximo_evento:
+                    await self.enviar_proximo_evento_info(proximo_evento, db, hora_atual)
+                else:
+                    # Se não há evento futuro, manter última imagem cronológica
+                    await self.manter_ultima_imagem_cronologica(visualization, db)
         except Exception as e:
             logger.error(f"Erro ao processar visualização {visualization}: {str(e)}")
+
+    async def enviar_proximo_evento_info(self, evento: Evento, db: Session, hora_atual: time):
+        """
+        Envia mensagem ao frontend informando o próximo evento futuro e o tempo restante
+        """
+        try:
+            cadastro = db.query(Cadastro).filter(Cadastro.cpf == evento.cpf).first()
+            if not cadastro:
+                return
+            # Calcular tempo restante até o próximo evento
+            hora_exibicao_dt = datetime.combine(datetime.today(), evento.hora_exibicao)
+            hora_atual_dt = datetime.combine(datetime.today(), hora_atual)
+            tempo_restante = (hora_exibicao_dt - hora_atual_dt).total_seconds()
+            if tempo_restante < 0:
+                tempo_restante = 0
+            ws_message = {
+                "cpf": evento.cpf,
+                "caminho_imagem": cadastro.caminho_imagem,
+                "visualization": evento.visualization,
+                "timestamp": datetime.now().isoformat(),
+                "hora_exibicao": str(evento.hora_exibicao),
+                "hora_fim": str(evento.hora_fim),
+                "tipo": "aguardando_proximo_evento",
+                "tempo_restante": tempo_restante
+            }
+            await manager.send_personal_message(
+                json.dumps(ws_message),
+                evento.visualization
+            )
+            logger.info(f"⏳ AGUARDANDO PRÓXIMO EVENTO: {evento.visualization} - CPF: {evento.cpf} - Exibição em {tempo_restante:.1f}s")
+        except Exception as e:
+            logger.error(f"Erro ao enviar info do próximo evento futuro: {str(e)}")
     
     async def process_event(self, evento: Evento, db: Session):
         """

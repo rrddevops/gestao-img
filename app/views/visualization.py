@@ -8,11 +8,11 @@ def create_visualization_page(visualization_name: str, port: int):
     """
     Cria uma página de visualização específica
     """
-    return f"""
+    return """
     <!DOCTYPE html>
     <html>
     <head>
-        <title>{visualization_name.title()}</title>
+        <title>{0}</title>
         <style>
             body {{
                 margin: 0;
@@ -90,9 +90,9 @@ def create_visualization_page(visualization_name: str, port: int):
     </head>
     <body>
         <div class="info">
-            <strong>{visualization_name.title()}</strong><br>
-            Porta: {port}<br>
-            WebSocket: ws://localhost:8000/websocket/{visualization_name}<br>
+            <strong>{0}</strong><br>
+            Porta: {1}<br>
+            WebSocket: ws://localhost:8000/websocket/{2}<br>
             <small>Versão: 3.0 (Imagem Cronológica)</small>
         </div>
         
@@ -129,8 +129,13 @@ def create_visualization_page(visualization_name: str, port: int):
             let imageStatus = document.getElementById('image-status');
             let imageStatusText = document.getElementById('image-status-text');
             
+            function anonymizeCPF(cpf) {{
+                if (!cpf || cpf.length < 5) return cpf;
+                return cpf.substring(0, 3) + '******' + cpf.substring(cpf.length - 2);
+            }}
+
             function connectWebSocket() {{
-                const wsUrl = `ws://${{window.location.hostname}}:8000/websocket/{visualization_name}`;
+                const wsUrl = `ws://${{window.location.hostname}}:8000/websocket/{3}`;
                 ws = new WebSocket(wsUrl);
                 
                 ws.onopen = function() {{
@@ -169,32 +174,32 @@ def create_visualization_page(visualization_name: str, port: int):
                 // Salvar dados da imagem atual
                 lastImageData = data;
                 
-                // Criar elemento de imagem
-                const imageContainer = document.createElement('div');
-                imageContainer.className = 'image-container';
-                
-                const img = document.createElement('img');
-                img.className = 'image';
-                img.src = `data:image/jpeg;base64,${{data.caminho_imagem}}`;
-                
-                imageContainer.appendChild(img);
-                
-                // Limpar container e adicionar nova imagem
-                container.innerHTML = '';
-                container.appendChild(imageContainer);
-                
                 // Mostrar status da imagem
                 imageStatus.style.display = 'block';
                 
                 // Verificar tipo de evento e configurar interface
                 if (data.tipo === 'novo_evento') {{
-                    // Novo evento - mostrar timer
+                    // Novo evento - exibir nova imagem e mostrar timer
+                    const imageContainer = document.createElement('div');
+                    imageContainer.className = 'image-container';
+                    
+                    const img = document.createElement('img');
+                    img.className = 'image';
+                    img.src = `data:image/jpeg;base64,${{data.caminho_imagem}}`;
+                    
+                    imageContainer.appendChild(img);
+                    
+                    // Limpar container e adicionar nova imagem
+                    container.innerHTML = '';
+                    container.appendChild(imageContainer);
+                    
+                    // Mostrar timer
                     timeLeft = 10;
                     timer.style.display = 'block';
                     document.getElementById('timer-text').textContent = timeLeft;
                     
                     // Atualizar status
-                    imageStatusText.innerHTML = `🆕 <strong>Novo Evento</strong><br>CPF: ${{data.cpf}}<br>Exibição: ${{data.hora_exibicao}}`;
+                    imageStatusText.innerHTML = `🆕 <strong>Novo Evento</strong><br>CPF: ${{anonymizeCPF(data.cpf)}}<br>Exibição: ${{data.hora_exibicao}}`;
                     imageStatus.style.background = 'rgba(0,128,0,0.8)';
                     
                     timerInterval = setInterval(function() {{
@@ -208,27 +213,76 @@ def create_visualization_page(visualization_name: str, port: int):
                         }}
                     }}, 1000);
                     
-                    console.log(`🆕 NOVO EVENTO: CPF ${{data.cpf}} - Exibição: ${{data.hora_exibicao}}`);
-                    
+                    console.log(`🆕 NOVO EVENTO: CPF ${{anonymizeCPF(data.cpf)}} - Exibição: ${{data.hora_exibicao}}`);
                 }} else if (data.tipo === 'manter_imagem_cronologica') {{
-                    // Manter imagem cronológica - não mostrar timer
+                    // Manter imagem cronológica - exibir nova imagem mas não mostrar timer
+                    const imageContainer = document.createElement('div');
+                    imageContainer.className = 'image-container';
+                    
+                    const img = document.createElement('img');
+                    img.className = 'image';
+                    img.src = `data:image/jpeg;base64,${{data.caminho_imagem}}`;
+                    
+                    imageContainer.appendChild(img);
+                    
+                    // Limpar container e adicionar nova imagem
+                    container.innerHTML = '';
+                    container.appendChild(imageContainer);
+                    
+                    // Não mostrar timer
                     timer.style.display = 'none';
                     
                     // Atualizar status
-                    imageStatusText.innerHTML = `🔄 <strong>Imagem Cronológica</strong><br>CPF: ${{data.cpf}}<br>Último evento: ${{data.hora_exibicao}}`;
+                    imageStatusText.innerHTML = `🔄 <strong>Imagem Cronológica</strong><br>CPF: ${{anonymizeCPF(data.cpf)}}<br>Último evento: ${{data.hora_exibicao}}`;
                     imageStatus.style.background = 'rgba(255,165,0,0.8)';
                     
-                    console.log(`🔄 MANTENDO IMAGEM CRONOLÓGICA: CPF ${{data.cpf}} - Último evento: ${{data.hora_exibicao}}`);
+                    console.log(`🔄 MANTENDO IMAGEM CRONOLÓGICA: CPF ${{anonymizeCPF(data.cpf)}} - Último evento: ${{data.hora_exibicao}}`);
+                }} else if (data.tipo === 'aguardando_proximo_evento') {{
+                    // Aguardando próximo evento - NÃO exibir nova imagem, apenas mostrar timer de espera
+                    // Manter a imagem atual na tela
                     
+                    // Mostrar timer de espera
+                    let tempoRestante = Math.ceil(data.tempo_restante);
+                    timer.style.display = 'block';
+                    document.getElementById('timer-text').textContent = tempoRestante;
+                    
+                    // Atualizar status
+                    imageStatusText.innerHTML = `⏳ <strong>Aguardando próxima imagem</strong><br>CPF: ${{anonymizeCPF(data.cpf)}}<br>Exibição prevista: ${{data.hora_exibicao}}`;
+                    imageStatus.style.background = 'rgba(0,0,255,0.8)';
+                    
+                    timerInterval = setInterval(function() {{
+                        tempoRestante--;
+                        document.getElementById('timer-text').textContent = tempoRestante;
+                        if (tempoRestante <= 0) {{
+                            clearInterval(timerInterval);
+                            timer.style.display = 'none';
+                        }}
+                    }}, 1000);
+                    
+                    console.log(`⏳ AGUARDANDO PRÓXIMO EVENTO: CPF ${{anonymizeCPF(data.cpf)}} - Exibição prevista: ${{data.hora_exibicao}}`);
                 }} else {{
-                    // Outro tipo - não mostrar timer
+                    // Outro tipo - exibir nova imagem mas não mostrar timer
+                    const imageContainer = document.createElement('div');
+                    imageContainer.className = 'image-container';
+                    
+                    const img = document.createElement('img');
+                    img.className = 'image';
+                    img.src = `data:image/jpeg;base64,${{data.caminho_imagem}}`;
+                    
+                    imageContainer.appendChild(img);
+                    
+                    // Limpar container e adicionar nova imagem
+                    container.innerHTML = '';
+                    container.appendChild(imageContainer);
+                    
+                    // Não mostrar timer
                     timer.style.display = 'none';
                     
                     // Atualizar status
-                    imageStatusText.innerHTML = `📺 <strong>Imagem</strong><br>CPF: ${{data.cpf}}`;
+                    imageStatusText.innerHTML = `📺 <strong>Imagem</strong><br>CPF: ${{anonymizeCPF(data.cpf)}}`;
                     imageStatus.style.background = 'rgba(0,0,255,0.8)';
                     
-                    console.log(`📺 IMAGEM: CPF ${{data.cpf}}`);
+                    console.log(`📺 IMAGEM: CPF ${{anonymizeCPF(data.cpf)}}`);
                 }}
             }}
             
@@ -237,7 +291,12 @@ def create_visualization_page(visualization_name: str, port: int):
         </script>
     </body>
     </html>
-    """
+    """.format(
+        visualization_name.title(),
+        port,
+        visualization_name,
+        visualization_name
+    )
 
 @router.get("/visualization1", response_class=HTMLResponse)
 async def visualization1():
