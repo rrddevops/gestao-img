@@ -6,25 +6,21 @@ router = APIRouter(tags=["visualization"])
 
 def create_visualization_page(visualization_name: str, port: int):
     """
-    Cria página HTML para uma visualização específica
+    Cria uma página de visualização específica
     """
     return f"""
     <!DOCTYPE html>
     <html>
     <head>
         <title>{visualization_name.title()}</title>
-        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-        <meta http-equiv="Pragma" content="no-cache">
-        <meta http-equiv="Expires" content="0">
         <style>
             body {{
                 margin: 0;
                 padding: 0;
                 background: #000;
+                color: white;
                 font-family: Arial, sans-serif;
                 overflow: hidden;
-            }}
-            .container {{
                 width: 100vw;
                 height: 100vh;
                 display: flex;
@@ -79,6 +75,17 @@ def create_visualization_page(visualization_name: str, port: int):
                 border-radius: 20px;
                 font-size: 16px;
             }}
+            .image-status {{
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                background: rgba(0,0,0,0.8);
+                color: white;
+                padding: 10px 15px;
+                border-radius: 20px;
+                font-size: 12px;
+                max-width: 300px;
+            }}
         </style>
     </head>
     <body>
@@ -86,7 +93,7 @@ def create_visualization_page(visualization_name: str, port: int):
             <strong>{visualization_name.title()}</strong><br>
             Porta: {port}<br>
             WebSocket: ws://localhost:8000/websocket/{visualization_name}<br>
-            <small>Versão: 2.0 (CPF removido)</small>
+            <small>Versão: 3.0 (Imagem Cronológica)</small>
         </div>
         
         <div class="status" id="status">
@@ -103,10 +110,14 @@ def create_visualization_page(visualization_name: str, port: int):
             <span id="timer-text">10</span>s
         </div>
         
+        <div class="image-status" id="image-status" style="display: none;">
+            <span id="image-status-text">Aguardando imagem...</span>
+        </div>
+        
         <script>
             // Forçar recarregamento se for versão antiga
-            if (localStorage.getItem('visualization_version') !== '2.0') {{
-                localStorage.setItem('visualization_version', '2.0');
+            if (localStorage.getItem('visualization_version') !== '3.0') {{
+                localStorage.setItem('visualization_version', '3.0');
                 location.reload(true);
             }}
             
@@ -115,6 +126,8 @@ def create_visualization_page(visualization_name: str, port: int):
             let timerInterval = null;
             let timeLeft = 10;
             let lastImageData = null;
+            let imageStatus = document.getElementById('image-status');
+            let imageStatusText = document.getElementById('image-status-text');
             
             function connectWebSocket() {{
                 const wsUrl = `ws://${{window.location.hostname}}:8000/websocket/{visualization_name}`;
@@ -170,12 +183,19 @@ def create_visualization_page(visualization_name: str, port: int):
                 container.innerHTML = '';
                 container.appendChild(imageContainer);
                 
-                // Verificar se é um novo evento ou manter imagem
+                // Mostrar status da imagem
+                imageStatus.style.display = 'block';
+                
+                // Verificar tipo de evento e configurar interface
                 if (data.tipo === 'novo_evento') {{
-                    // Iniciar timer apenas para novos eventos
+                    // Novo evento - mostrar timer
                     timeLeft = 10;
                     timer.style.display = 'block';
                     document.getElementById('timer-text').textContent = timeLeft;
+                    
+                    // Atualizar status
+                    imageStatusText.innerHTML = `🆕 <strong>Novo Evento</strong><br>CPF: ${{data.cpf}}<br>Exibição: ${{data.hora_exibicao}}`;
+                    imageStatus.style.background = 'rgba(0,128,0,0.8)';
                     
                     timerInterval = setInterval(function() {{
                         timeLeft--;
@@ -187,12 +207,29 @@ def create_visualization_page(visualization_name: str, port: int):
                             // Não remover a imagem, apenas esconder o timer
                         }}
                     }}, 1000);
-                }} else {{
-                    // Para manter imagem, não mostrar timer
+                    
+                    console.log(`🆕 NOVO EVENTO: CPF ${{data.cpf}} - Exibição: ${{data.hora_exibicao}}`);
+                    
+                }} else if (data.tipo === 'manter_imagem_cronologica') {{
+                    // Manter imagem cronológica - não mostrar timer
                     timer.style.display = 'none';
+                    
+                    // Atualizar status
+                    imageStatusText.innerHTML = `🔄 <strong>Imagem Cronológica</strong><br>CPF: ${{data.cpf}}<br>Último evento: ${{data.hora_exibicao}}`;
+                    imageStatus.style.background = 'rgba(255,165,0,0.8)';
+                    
+                    console.log(`🔄 MANTENDO IMAGEM CRONOLÓGICA: CPF ${{data.cpf}} - Último evento: ${{data.hora_exibicao}}`);
+                    
+                }} else {{
+                    // Outro tipo - não mostrar timer
+                    timer.style.display = 'none';
+                    
+                    // Atualizar status
+                    imageStatusText.innerHTML = `📺 <strong>Imagem</strong><br>CPF: ${{data.cpf}}`;
+                    imageStatus.style.background = 'rgba(0,0,255,0.8)';
+                    
+                    console.log(`📺 IMAGEM: CPF ${{data.cpf}}`);
                 }}
-                
-                console.log(`Imagem exibida: ${{data.tipo === 'novo_evento' ? 'Novo evento' : 'Mantendo imagem'}}`);
             }}
             
             // Iniciar conexão WebSocket

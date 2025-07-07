@@ -120,12 +120,24 @@ async def root():
     </html>
     """
 
+@app.get("/health")
+async def health_check():
+    """
+    Endpoint de verificação de saúde do sistema
+    """
+    return {"status": "healthy", "timestamp": "2024-01-01T00:00:00Z"}
+
 @app.get("/scheduler/status")
-async def get_scheduler_status():
+async def scheduler_status():
     """
-    Retorna status do agendador
+    Retorna o status do agendador de eventos
     """
-    return event_scheduler.get_scheduler_status()
+    try:
+        status = event_scheduler.get_scheduler_status()
+        return status
+    except Exception as e:
+        logger.error(f"Erro ao obter status do scheduler: {str(e)}")
+        return {"error": str(e)}
 
 @app.on_event("startup")
 async def startup_event():

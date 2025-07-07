@@ -86,13 +86,23 @@ async def processar_webhook(
                 if ultimo_evento_visualization:
                     # Se existe evento anterior nesta visualização, começar após o último terminar
                     hora_inicio_base = ultimo_evento_visualization.hora_fim
-                    # Converter para datetime com timezone de Brasília
-                    data_atual = hora_atual_brasilia.date()
-                    hora_inicio_dt = TIMEZONE_BRASILIA.localize(
-                        datetime.combine(data_atual, hora_inicio_base)
-                    )
-                    # Adicionar pequeno incremento entre eventos (2 segundos)
-                    hora_inicio_dt += timedelta(seconds=2)
+                    
+                    # Verificar se o último evento já terminou
+                    if hora_inicio_base <= hora_atual:
+                        # Último evento já terminou, começar imediatamente
+                        # Aplicar delay baseado nos parâmetros da tabela
+                        delay_inicial = tempo_inicial + (i * incremento)
+                        hora_inicio_dt = hora_atual_brasilia + timedelta(seconds=delay_inicial)
+                    else:
+                        # Último evento ainda está ativo, começar após ele terminar
+                        # Converter para datetime com timezone de Brasília
+                        data_atual = hora_atual_brasilia.date()
+                        hora_inicio_dt = TIMEZONE_BRASILIA.localize(
+                            datetime.combine(data_atual, hora_inicio_base)
+                        )
+                        # Aplicar delay baseado nos parâmetros da tabela
+                        delay_inicial = tempo_inicial + (i * incremento)
+                        hora_inicio_dt += timedelta(seconds=delay_inicial)
                 else:
                     # Primeiro evento desta visualização
                     # Calcular delay baseado no índice da visualização

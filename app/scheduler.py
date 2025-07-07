@@ -25,11 +25,22 @@ class EventScheduler:
         # Cache para controlar eventos já processados
         self.processed_events: Dict[str, int] = {}
         
+        # Cache para controlar última imagem enviada por visualização
+        self.last_sent_images: Dict[str, Dict] = {}
+        
         # Agendar verificação a cada segundo
         self.scheduler.add_job(
             self.check_events,
             IntervalTrigger(seconds=1),
             id='check_events',
+            replace_existing=True
+        )
+        
+        # Agendar limpeza de cache a cada 5 minutos
+        self.scheduler.add_job(
+            self.limpar_cache_antigo,
+            IntervalTrigger(minutes=5),
+            id='limpar_cache',
             replace_existing=True
         )
         
@@ -79,15 +90,15 @@ class EventScheduler:
             
             if evento_ativo:
                 # Verificar se este evento já foi processado
-                event_key = f"{visualization}_{evento_ativo.id}"
+                event_key = f"{visualization}_active_{evento_ativo.id}"
                 if event_key not in self.processed_events:
                     # Processar novo evento
                     await self.process_event(evento_ativo, db)
                     self.processed_events[event_key] = evento_ativo.id
-                    logger.info(f"Novo evento processado: {visualization} - CPF: {evento_ativo.cpf} - Hora: {hora_atual}")
+                    logger.info(f"🆕 NOVO EVENTO: {visualization} - CPF: {evento_ativo.cpf} - Hora: {hora_atual}")
             else:
-                # Se não há evento ativo, manter última imagem
-                await self.manter_ultima_imagem(visualization, db)
+                # Se não há evento ativo, manter última imagem cronológica
+                await self.manter_ultima_imagem_cronologica(visualization, db)
                 
         except Exception as e:
             logger.error(f"Erro ao processar visualização {visualization}: {str(e)}")
@@ -120,63 +131,76 @@ class EventScheduler:
                 evento.visualization
             )
             
-            logger.info(f"Evento processado: {evento.visualization} - CPF: {evento.cpf} - Hora: {evento.hora_exibicao}")
+            # Atualizar cache da última imagem enviada
+            self.last_sent_images[evento.visualization] = {
+                "cpf": evento.cpf,
+                "evento_id": evento.id,
+                "timestamp": datetime.now().timestamp()
+            }
+            
+            logger.info(f"✅ Evento processado: {evento.visualization} - CPF: {evento.cpf} - Hora: {evento.hora_exibicao}")
             
         except Exception as e:
             logger.error(f"Erro ao processar evento {evento.id}: {str(e)}")
     
-    async def manter_ultima_imagem(self, visualization: str, db: Session):
+    async def manter_ultima_imagem_cronologica(self, visualization: str, db: Session):
         """
-        Mantém a última imagem na tela quando não há eventos ativos
+        Mantém a última imagem cronológica na tela quando não há eventos ativos
         """
         try:
-            # Buscar o último evento desta visualização
+            # Buscar o último evento cronológico desta visualização (que já terminou)
             ultimo_evento = db.query(Evento).filter(
-                Evento.visualization == visualization
-            ).order_by(Evento.hora_exibicao.desc()).first()
+                Evento.visualization == visualization,
+                Evento.hora_fim <= self.obter_hora_brasilia().time()  # Apenas eventos que já terminaram
+            ).order_by(Evento.hora_fim.desc()).first()
             
-            if ultimo_evento:
-                # Buscar dados do cadastro
-                cadastro = db.query(Cadastro).filter(Cadastro.cpf == ultimo_evento.cpf).first()
-                if not cadastro:
-                    return
-                
-                # Preparar mensagem WebSocket para manter imagem
-                ws_message = {
-                    "cpf": ultimo_evento.cpf,
-                    "caminho_imagem": cadastro.caminho_imagem,
-                    "visualization": visualization,
-                    "timestamp": datetime.now().isoformat(),
-                    "hora_exibicao": str(ultimo_evento.hora_exibicao),
-                    "hora_fim": str(ultimo_evento.hora_fim),
-                    "tipo": "manter_imagem"
-                }
-                
-                # Enviar via WebSocket apenas se não foi enviado recentemente (a cada 30 segundos)
-                event_key = f"{visualization}_keep_{ultimo_evento.id}"
-                current_time = datetime.now()
-                
-                # Verificar se já enviamos esta imagem recentemente
-                if event_key not in self.processed_events:
-                    await manager.send_personal_message(
-                        json.dumps(ws_message), 
-                        visualization
-                    )
-                    self.processed_events[event_key] = current_time.timestamp()
-                    logger.info(f"Última imagem mantida: {visualization} - CPF: {ultimo_evento.cpf}")
-                else:
-                    # Verificar se passou mais de 30 segundos desde o último envio
-                    last_sent_time = self.processed_events[event_key]
-                    if current_time.timestamp() - last_sent_time > 30:
-                        await manager.send_personal_message(
-                            json.dumps(ws_message), 
-                            visualization
-                        )
-                        self.processed_events[event_key] = current_time.timestamp()
-                        logger.info(f"Última imagem reenviada: {visualization} - CPF: {ultimo_evento.cpf}")
+            if not ultimo_evento:
+                # Se não há eventos para esta visualização, não fazer nada
+                return
+            
+            # Buscar dados do cadastro
+            cadastro = db.query(Cadastro).filter(Cadastro.cpf == ultimo_evento.cpf).first()
+            if not cadastro:
+                return
+            
+            # Verificar se já enviamos esta imagem recentemente
+            current_time = datetime.now().timestamp()
+            last_sent = self.last_sent_images.get(visualization, {})
+            
+            # Se é a mesma imagem e foi enviada há menos de 60 segundos, não reenviar
+            if (last_sent.get("cpf") == ultimo_evento.cpf and 
+                last_sent.get("evento_id") == ultimo_evento.id and
+                current_time - last_sent.get("timestamp", 0) < 60):
+                return
+            
+            # Preparar mensagem WebSocket para manter imagem
+            ws_message = {
+                "cpf": ultimo_evento.cpf,
+                "caminho_imagem": cadastro.caminho_imagem,
+                "visualization": visualization,
+                "timestamp": datetime.now().isoformat(),
+                "hora_exibicao": str(ultimo_evento.hora_exibicao),
+                "hora_fim": str(ultimo_evento.hora_fim),
+                "tipo": "manter_imagem_cronologica"
+            }
+            
+            # Enviar via WebSocket
+            await manager.send_personal_message(
+                json.dumps(ws_message), 
+                visualization
+            )
+            
+            # Atualizar cache da última imagem enviada
+            self.last_sent_images[visualization] = {
+                "cpf": ultimo_evento.cpf,
+                "evento_id": ultimo_evento.id,
+                "timestamp": current_time
+            }
+            
+            logger.info(f"🔄 MANTENDO IMAGEM CRONOLÓGICA: {visualization} - CPF: {ultimo_evento.cpf} (último evento: {ultimo_evento.hora_fim})")
                 
         except Exception as e:
-            logger.error(f"Erro ao manter última imagem para {visualization}: {str(e)}")
+            logger.error(f"Erro ao manter última imagem cronológica para {visualization}: {str(e)}")
     
     def limpar_cache_antigo(self):
         """
@@ -189,7 +213,21 @@ class EventScheduler:
                 keys_to_remove = list(self.processed_events.keys())[:-100]
                 for key in keys_to_remove:
                     del self.processed_events[key]
-                logger.info(f"Cache limpo: {len(keys_to_remove)} entradas removidas")
+                logger.info(f"🧹 Cache limpo: {len(keys_to_remove)} entradas removidas")
+                
+            # Limpar cache de imagens antigas (mais de 1 hora)
+            current_time = datetime.now().timestamp()
+            keys_to_remove = []
+            for viz, data in self.last_sent_images.items():
+                if current_time - data.get("timestamp", 0) > 3600:  # 1 hora
+                    keys_to_remove.append(viz)
+            
+            for key in keys_to_remove:
+                del self.last_sent_images[key]
+                
+            if keys_to_remove:
+                logger.info(f"🧹 Cache de imagens limpo: {len(keys_to_remove)} entradas removidas")
+                
         except Exception as e:
             logger.error(f"Erro ao limpar cache: {str(e)}")
     
@@ -198,8 +236,7 @@ class EventScheduler:
         Adiciona um evento ao agendador
         """
         try:
-            # O evento será processado automaticamente pelo check_events
-            logger.info(f"Evento adicionado ao agendador: {evento.visualization} - CPF: {evento.cpf}")
+            logger.info(f"Evento adicionado: {evento.visualization} - CPF: {evento.cpf}")
         except Exception as e:
             logger.error(f"Erro ao adicionar evento: {str(e)}")
     
@@ -207,19 +244,26 @@ class EventScheduler:
         """
         Retorna status do agendador
         """
-        return {
-            "running": self.scheduler.running,
-            "jobs": len(self.scheduler.get_jobs()),
-            "cache_size": len(self.processed_events),
-            "next_run_time": str(self.scheduler.get_job('check_events').next_run_time) if self.scheduler.get_job('check_events') else None
-        }
+        try:
+            return {
+                "running": self.scheduler.running,
+                "jobs": len(self.scheduler.get_jobs()),
+                "processed_events": len(self.processed_events),
+                "last_sent_images": len(self.last_sent_images)
+            }
+        except Exception as e:
+            logger.error(f"Erro ao obter status do agendador: {str(e)}")
+            return {"error": str(e)}
     
     def stop(self):
         """
         Para o agendador
         """
-        self.scheduler.shutdown()
-        logger.info("Agendador de eventos parado")
+        try:
+            self.scheduler.shutdown()
+            logger.info("Agendador de eventos parado")
+        except Exception as e:
+            logger.error(f"Erro ao parar agendador: {str(e)}")
 
 # Instância global do agendador
 event_scheduler = EventScheduler() 
