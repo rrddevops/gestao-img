@@ -83,26 +83,22 @@ async def processar_webhook(
                     Evento.visualization == visualization
                 ).order_by(Evento.hora_fim.desc()).first()
                 
-                delay_inicial = tempo_inicial + (i * incremento)
-                agora_naive = hora_atual_brasilia.replace(tzinfo=None)
+                # Calcular delay fixo baseado no índice da visualização
+                delay_fixo = tempo_inicial + (i * incremento)
                 
+                # Sempre começar a partir de agora com o delay fixo
+                hora_inicio_dt = hora_atual_brasilia + timedelta(seconds=delay_fixo)
+                
+                # Verificar se há sobreposição com eventos existentes nesta visualização
                 if ultimo_evento_visualization:
-                    hora_fim_ultimo = datetime.combine(agora_naive.date(), ultimo_evento_visualization.hora_fim)
-                    if hora_fim_ultimo >= agora_naive:
-                        # Último evento ainda está rodando - agendar após o fim dele
-                        hora_inicio_dt = hora_fim_ultimo + timedelta(seconds=delay_inicial)
-                    else:
-                        # Último evento já terminou
-                        diff = (agora_naive - hora_fim_ultimo).total_seconds()
-                        if diff >= tempo_inicial:
-                            # Quando há um gap >= tempo_inicial, usar delay_inicial (que inclui o incremento)
-                            hora_inicio_dt = agora_naive + timedelta(seconds=delay_inicial)
-                        else:
-                            # Gap pequeno - continuar a sequência
-                            hora_inicio_dt = hora_fim_ultimo + timedelta(seconds=delay_inicial)
-                else:
-                    # Primeiro evento desta visualização
-                    hora_inicio_dt = agora_naive + timedelta(seconds=delay_inicial)
+                    hora_fim_ultimo = ultimo_evento_visualization.hora_fim
+                    data_atual = hora_atual_brasilia.date()
+                    hora_fim_ultimo_dt = datetime.combine(data_atual, hora_fim_ultimo)
+                    
+                    # Se o horário calculado é anterior ao fim do último evento, ajustar
+                    if hora_inicio_dt.replace(tzinfo=None) <= hora_fim_ultimo_dt:
+                        # Começar após o último evento terminar
+                        hora_inicio_dt = hora_fim_ultimo_dt + timedelta(seconds=1)
                 
                 # Calcular horários para este evento
                 hora_exibicao_dt = hora_inicio_dt
@@ -113,7 +109,10 @@ async def processar_webhook(
                 hora_fim = hora_fim_dt.time()
                 
                 # Calcular delay (diferença entre hora atual e hora de exibição)
-                delay_timedelta = hora_exibicao_dt - agora_naive
+                # Converter ambos para datetime sem timezone para o cálculo
+                hora_exibicao_naive = hora_exibicao_dt.replace(tzinfo=None)
+                hora_atual_naive = hora_atual_brasilia.replace(tzinfo=None)
+                delay_timedelta = hora_exibicao_naive - hora_atual_naive
                 
                 # Criar evento
                 evento = Evento(
@@ -128,7 +127,7 @@ async def processar_webhook(
                 db.add(evento)
                 eventos_criados += 1
                 
-                logger.info(f"Evento criado: {visualization} - CPF: {cpf} - Exibição: {hora_exibicao} - Fim: {hora_fim}")
+                logger.info(f"Evento criado: {visualization} - CPF: {cpf} - Exibição: {hora_exibicao} - Fim: {hora_fim} - Delay: {delay_fixo}s")
             
             db.commit()
             
