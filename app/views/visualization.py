@@ -40,64 +40,86 @@ def create_visualization_page(visualization_name: str, port: int):
                 border: 2px solid #333;
                 border-radius: 10px;
             }}
-            .info {{
+            .top-info-bar {{
                 position: fixed;
-                top: 10px;
-                left: 10px;
-                background: rgba(0,0,0,0.8);
+                top: 5px;
+                left: 5px;
+                right: 5px;
+                background: rgba(0,0,0,0.9);
                 color: white;
-                padding: 10px;
+                padding: 8px 12px;
                 border-radius: 5px;
-                font-size: 14px;
+                font-size: 12px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                z-index: 1000;
+                height: 20px;
             }}
-            .status {{
-                position: fixed;
-                top: 10px;
-                right: 10px;
-                background: rgba(0,0,0,0.8);
-                color: white;
-                padding: 10px;
-                border-radius: 5px;
-                font-size: 14px;
+            .info-left {{
+                display: flex;
+                align-items: center;
+                gap: 15px;
+            }}
+            .info-right {{
+                display: flex;
+                align-items: center;
+                gap: 15px;
+            }}
+            .status-indicator {{
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+            }}
+            .status-connected {{
+                background: rgba(0,128,0,0.8);
+            }}
+            .status-disconnected {{
+                background: rgba(255,0,0,0.8);
+            }}
+            .status-error {{
+                background: rgba(255,0,0,0.8);
+            }}
+            .event-type {{
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+            }}
+            .event-new {{
+                background: rgba(0,128,0,0.8);
+            }}
+            .event-chronological {{
+                background: rgba(255,165,0,0.8);
+            }}
+            .event-waiting {{
+                background: rgba(0,0,255,0.8);
             }}
             .loading {{
                 color: white;
                 font-size: 24px;
                 text-align: center;
             }}
-            .timer {{
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                background: rgba(0,0,0,0.8);
-                color: white;
-                padding: 10px 20px;
-                border-radius: 20px;
-                font-size: 16px;
-            }}
-            .image-status {{
-                position: fixed;
-                bottom: 20px;
-                left: 20px;
-                background: rgba(0,0,0,0.8);
-                color: white;
-                padding: 10px 15px;
-                border-radius: 20px;
-                font-size: 12px;
-                max-width: 300px;
-            }}
         </style>
     </head>
     <body>
-        <div class="info">
-            <strong>{0}</strong><br>
-            Porta: {1}<br>
-            WebSocket: ws://localhost:8000/websocket/{2}<br>
-            <small>Versão: 3.0 (Imagem Cronológica)</small>
-        </div>
-        
-        <div class="status" id="status">
-            🔴 Desconectado
+        <div class="top-info-bar">
+            <div class="info-left">
+                <span><strong>{0}</strong></span>
+                <span>Porta: {1}</span>
+                <span id="connection-status">🔴 Desconectado</span>
+                <span id="event-info" style="display: none;">
+                    <span id="event-type" class="event-type"></span>
+                    <span id="cpf-info"></span>
+                    <span id="timer-info"></span>
+                </span>
+            </div>
+            <div class="info-right">
+                <span id="next-event-info" style="display: none;">
+                    Próxima: <span id="next-cpf"></span> em <span id="next-timer">0</span>s
+                </span>
+            </div>
         </div>
         
         <div class="container" id="container">
@@ -106,18 +128,10 @@ def create_visualization_page(visualization_name: str, port: int):
             </div>
         </div>
         
-        <div class="timer" id="timer" style="display: none;">
-            <span id="timer-text">10</span>s
-        </div>
-        
-        <div class="image-status" id="image-status" style="display: none;">
-            <span id="image-status-text">Aguardando imagem...</span>
-        </div>
-        
         <script>
             // Forçar recarregamento se for versão antiga
-            if (localStorage.getItem('visualization_version') !== '3.0') {{
-                localStorage.setItem('visualization_version', '3.0');
+            if (localStorage.getItem('visualization_version') !== '4.0') {{
+                localStorage.setItem('visualization_version', '4.0');
                 location.reload(true);
             }}
             
@@ -126,8 +140,6 @@ def create_visualization_page(visualization_name: str, port: int):
             let timerInterval = null;
             let timeLeft = 10;
             let lastImageData = null;
-            let imageStatus = document.getElementById('image-status');
-            let imageStatusText = document.getElementById('image-status-text');
             
             function anonymizeCPF(cpf) {{
                 if (!cpf || cpf.length < 5) return cpf;
@@ -139,8 +151,8 @@ def create_visualization_page(visualization_name: str, port: int):
                 ws = new WebSocket(wsUrl);
                 
                 ws.onopen = function() {{
-                    document.getElementById('status').innerHTML = '🟢 Conectado';
-                    document.getElementById('status').style.background = 'rgba(0,128,0,0.8)';
+                    document.getElementById('connection-status').innerHTML = '🟢 Conectado';
+                    document.getElementById('connection-status').className = 'status-indicator status-connected';
                 }};
                 
                 ws.onmessage = function(event) {{
@@ -149,22 +161,23 @@ def create_visualization_page(visualization_name: str, port: int):
                 }};
                 
                 ws.onclose = function() {{
-                    document.getElementById('status').innerHTML = '🔴 Desconectado';
-                    document.getElementById('status').style.background = 'rgba(255,0,0,0.8)';
+                    document.getElementById('connection-status').innerHTML = '🔴 Desconectado';
+                    document.getElementById('connection-status').className = 'status-indicator status-disconnected';
                     // Tentar reconectar em 5 segundos
                     setTimeout(connectWebSocket, 5000);
                 }};
                 
                 ws.onerror = function(error) {{
                     console.error('WebSocket error:', error);
-                    document.getElementById('status').innerHTML = '❌ Erro';
-                    document.getElementById('status').style.background = 'rgba(255,0,0,0.8)';
+                    document.getElementById('connection-status').innerHTML = '❌ Erro';
+                    document.getElementById('connection-status').className = 'status-indicator status-error';
                 }};
             }}
             
             function displayImage(data) {{
                 const container = document.getElementById('container');
-                const timer = document.getElementById('timer');
+                const eventInfo = document.getElementById('event-info');
+                const nextEventInfo = document.getElementById('next-event-info');
                 
                 // Limpar timer anterior
                 if (timerInterval) {{
@@ -173,9 +186,6 @@ def create_visualization_page(visualization_name: str, port: int):
                 
                 // Salvar dados da imagem atual
                 lastImageData = data;
-                
-                // Mostrar status da imagem
-                imageStatus.style.display = 'block';
                 
                 // Verificar tipo de evento e configurar interface
                 if (data.tipo === 'novo_evento') {{
@@ -193,25 +203,28 @@ def create_visualization_page(visualization_name: str, port: int):
                     container.innerHTML = '';
                     container.appendChild(imageContainer);
                     
+                    // Mostrar informações do evento
+                    eventInfo.style.display = 'block';
+                    document.getElementById('event-type').textContent = '🆕 NOVO';
+                    document.getElementById('event-type').className = 'event-type event-new';
+                    document.getElementById('cpf-info').textContent = `CPF: ${{anonymizeCPF(data.cpf)}}`;
+                    
                     // Mostrar timer
                     timeLeft = 10;
-                    timer.style.display = 'block';
-                    document.getElementById('timer-text').textContent = timeLeft;
-                    
-                    // Atualizar status
-                    imageStatusText.innerHTML = `🆕 <strong>Novo Evento</strong><br>CPF: ${{anonymizeCPF(data.cpf)}}<br>Exibição: ${{data.hora_exibicao}}`;
-                    imageStatus.style.background = 'rgba(0,128,0,0.8)';
+                    document.getElementById('timer-info').textContent = `Timer: ${{timeLeft}}s`;
                     
                     timerInterval = setInterval(function() {{
                         timeLeft--;
-                        document.getElementById('timer-text').textContent = timeLeft;
+                        document.getElementById('timer-info').textContent = `Timer: ${{timeLeft}}s`;
                         
                         if (timeLeft <= 0) {{
                             clearInterval(timerInterval);
-                            timer.style.display = 'none';
-                            // Não remover a imagem, apenas esconder o timer
+                            document.getElementById('timer-info').textContent = '';
                         }}
                     }}, 1000);
+                    
+                    // Esconder info do próximo evento
+                    nextEventInfo.style.display = 'none';
                     
                     console.log(`🆕 NOVO EVENTO: CPF ${{anonymizeCPF(data.cpf)}} - Exibição: ${{data.hora_exibicao}}`);
                 }} else if (data.tipo === 'manter_imagem_cronologica') {{
@@ -229,33 +242,37 @@ def create_visualization_page(visualization_name: str, port: int):
                     container.innerHTML = '';
                     container.appendChild(imageContainer);
                     
-                    // Não mostrar timer
-                    timer.style.display = 'none';
+                    // Mostrar informações do evento
+                    eventInfo.style.display = 'block';
+                    document.getElementById('event-type').textContent = '🔄 CRONO';
+                    document.getElementById('event-type').className = 'event-type event-chronological';
+                    document.getElementById('cpf-info').textContent = `CPF: ${{anonymizeCPF(data.cpf)}}`;
+                    document.getElementById('timer-info').textContent = '';
                     
-                    // Atualizar status
-                    imageStatusText.innerHTML = `🔄 <strong>Imagem Cronológica</strong><br>CPF: ${{anonymizeCPF(data.cpf)}}<br>Último evento: ${{data.hora_exibicao}}`;
-                    imageStatus.style.background = 'rgba(255,165,0,0.8)';
+                    // Esconder info do próximo evento
+                    nextEventInfo.style.display = 'none';
                     
                     console.log(`🔄 MANTENDO IMAGEM CRONOLÓGICA: CPF ${{anonymizeCPF(data.cpf)}} - Último evento: ${{data.hora_exibicao}}`);
                 }} else if (data.tipo === 'aguardando_proximo_evento') {{
                     // Aguardando próximo evento - NÃO exibir nova imagem, apenas mostrar timer de espera
                     // Manter a imagem atual na tela
                     
-                    // Mostrar timer de espera
-                    let tempoRestante = Math.ceil(data.tempo_restante);
-                    timer.style.display = 'block';
-                    document.getElementById('timer-text').textContent = tempoRestante;
+                    // Mostrar informações do próximo evento
+                    nextEventInfo.style.display = 'block';
+                    document.getElementById('next-cpf').textContent = anonymizeCPF(data.cpf);
                     
-                    // Atualizar status
-                    imageStatusText.innerHTML = `⏳ <strong>Aguardando próxima imagem</strong><br>CPF: ${{anonymizeCPF(data.cpf)}}<br>Exibição prevista: ${{data.hora_exibicao}}`;
-                    imageStatus.style.background = 'rgba(0,0,255,0.8)';
+                    let tempoRestante = Math.ceil(data.tempo_restante);
+                    document.getElementById('next-timer').textContent = tempoRestante;
+                    
+                    // Esconder info do evento atual
+                    eventInfo.style.display = 'none';
                     
                     timerInterval = setInterval(function() {{
                         tempoRestante--;
-                        document.getElementById('timer-text').textContent = tempoRestante;
+                        document.getElementById('next-timer').textContent = tempoRestante;
                         if (tempoRestante <= 0) {{
                             clearInterval(timerInterval);
-                            timer.style.display = 'none';
+                            nextEventInfo.style.display = 'none';
                         }}
                     }}, 1000);
                     
@@ -275,12 +292,15 @@ def create_visualization_page(visualization_name: str, port: int):
                     container.innerHTML = '';
                     container.appendChild(imageContainer);
                     
-                    // Não mostrar timer
-                    timer.style.display = 'none';
+                    // Mostrar informações básicas
+                    eventInfo.style.display = 'block';
+                    document.getElementById('event-type').textContent = '📺 IMG';
+                    document.getElementById('event-type').className = 'event-type event-waiting';
+                    document.getElementById('cpf-info').textContent = `CPF: ${{anonymizeCPF(data.cpf)}}`;
+                    document.getElementById('timer-info').textContent = '';
                     
-                    // Atualizar status
-                    imageStatusText.innerHTML = `📺 <strong>Imagem</strong><br>CPF: ${{anonymizeCPF(data.cpf)}}`;
-                    imageStatus.style.background = 'rgba(0,0,255,0.8)';
+                    // Esconder info do próximo evento
+                    nextEventInfo.style.display = 'none';
                     
                     console.log(`📺 IMAGEM: CPF ${{anonymizeCPF(data.cpf)}}`);
                 }}
@@ -291,12 +311,7 @@ def create_visualization_page(visualization_name: str, port: int):
         </script>
     </body>
     </html>
-    """.format(
-        visualization_name.title(),
-        port,
-        visualization_name,
-        visualization_name
-    )
+    """.format(visualization_name, port, visualization_name, visualization_name)
 
 @router.get("/visualization1", response_class=HTMLResponse)
 async def visualization1():
